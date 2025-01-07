@@ -22,10 +22,11 @@ This project seeks to:
 - Comparing AI-generated labels with original manual annotations
 
 ## Repository Structure
-```voxelwise_encoding/
-├── voxelwise_encoding_ridge.
-├── utils
-├── model_config
-└── ..
+```
+├─voxelwise_encoding/
+├──── voxelwise_encoding_ridge.
+├──── utils
+├──── model_config
+└──── ..```
 
 ### This project is based on Shiri almog's work : https://github.com/Shirialmog/STS
