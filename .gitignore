@@ -1,7 +1,7 @@
  # Data files
 *.nii
 *.nii.gz
-*.npy
+
 
 # Media files
 *.mp4
@@ -13,3 +13,4 @@ result_llava_socialspeak/
 result_llayla_social/
 frames/
 __pycache__/
+
