@@ -1,0 +1,15 @@
+ # Data files
+*.nii
+*.nii.gz
+*.npy
+
+# Media files
+*.mp4
+*.avi
+
+# Output and cache
+results*/
+result_llava_socialspeak/
+result_llayla_social/
+frames/
+__pycache__/

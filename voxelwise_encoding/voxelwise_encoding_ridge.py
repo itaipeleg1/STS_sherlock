@@ -21,7 +21,7 @@ def concat_features(features_list, single_features_dir):
     return processed_annotations
 
 
-def main(data_path, annotations_path, mask_path, model, group_dir, original_data_shape, num_subjects, alphas):
+def main(data_path, annotations_path, mask_path, model, group_dir, original_data_shape, num_subjects, alphas,length):
     feature_names = models_config_dict[model]
     features = concat_features(feature_names, annotations_path)
 
@@ -45,12 +45,9 @@ def main(data_path, annotations_path, mask_path, model, group_dir, original_data
             mask = None
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask,
                                                                                   args.results_dir)
-        data_clean = data_clean[:1976]  # in case the data is a frame or a few frames longer
-        ## This can be trimmed according to sync with the annotations
-        #t1 = data_clean[25:946]
-        #t2 = data_clean[946 + 25:]
-        #data_clean = np.concatenate([t1, t2])
-        data_clean = data_clean[:1053]
+        
+        ## This can be trimmed according to sync with the annotations or other videos/annotations
+        data_clean = data_clean[:length]
         data_clean = data_clean.reshape(data_clean.shape[0],-1)
         num_voxels = data_clean.shape[1]
         
@@ -118,12 +115,14 @@ if __name__ == '__main__':
     args.add_argument('--annotations_path', type=str)
     args.add_argument('--isc_mask_path', type=str, required=False)
     args.add_argument('--results_dir', type=str)
+    args.add_argument('--length', type=int, required=False)
     args.add_argument('--model', type=str, default='full',
                       help='full, social, social_plus_llava, llava_features, llava_only_social')
     if len(sys.argv) == 1:  # No arguments provided (debug mode)
         # Set default values for debugging
         debug_args = [
             "--model", 'llava_only_social',
+            "--length", 1976,
             '--fmri_data_path', f"C:\\uni\\Msc Brain\\Lab work\\Shiri\\STS\\for_test\\fmri_data",
             '--annotations_path', f'C:\\uni\\Msc Brain\\Lab work\\Shiri\\STS\\for_test\\annotations',
             '--results_dir', f'C:\\uni\\Msc Brain\\Lab work\\Shiri\\STS\\for_test\\result_llava_socialspeak',
@@ -143,7 +142,7 @@ if __name__ == '__main__':
     num_subjects = 17
 
     main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, group_dir, original_data_shape,
-         num_subjects, alphas)
+         num_subjects, alphas,args.length)
 
     duration = round((time.time() - start_time) / 60)
     print(f'duration: {duration} mins')
