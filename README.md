@@ -23,10 +23,15 @@ This project seeks to:
 
 ## Repository Structure
 ```
-├─voxelwise_encoding/
-├──── voxelwise_encoding_ridge.
-├──── utils
-├──── model_config
-└──── ..```
+add_annotations_to_movie   # Used to inspect aligning between annotations and movie
+frames                     # Used to extract all the frames from the movie
+movie_utils
+voxelwise_encoding/
+    ├── voxelwise_encoding_ridge
+    ├── utils
+    ├── model_config
+    └── ...
+```
 
-### This project is based on Shiri almog's work : https://github.com/Shirialmog/STS
+## Credits
+This project is based on [Shiri Almog's work](https://github.com/Shirialmog/STS)
