@@ -11,13 +11,6 @@ A Python tool for analyzing sequences of image frames using the LLaVA (Large Lan
 - Configurable prompts for different types of analysis
 - Command-line interface for easy use
 
-## Prerequisites
-
-```bash
-pip install -q -U transformers==4.47.0
-pip install -q bitsandbytes==0.41.3 accelerate==0.26.0
-```
-
 ## Arguments
 
 | Argument | Type | Default | Description |
