@@ -15,3 +15,5 @@ frames/
 __pycache__/
 
 projects data/result_llava_social_speak/
+projects data/result_llava_music_exp/
+
