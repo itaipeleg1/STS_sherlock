@@ -47,7 +47,7 @@ def main(data_path, annotations_path, mask_path, model, group_dir, original_data
                                                                                   args.results_dir)
         
         ## This can be trimmed according to sync with the annotations or other videos/annotations
-        data_clean = data_clean[:1975]
+        data_clean = data_clean[:1976]
         data_clean = data_clean.reshape(data_clean.shape[0],-1)
         num_voxels = data_clean.shape[1]
         
