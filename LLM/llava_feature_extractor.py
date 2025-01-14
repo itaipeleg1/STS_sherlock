@@ -89,7 +89,7 @@ def analyze_frames(root_dir, pipe,
             prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
             outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
             response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-            prompt3 = "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:"
+            prompt3 = "USER: <image>\nIs the angle of this image is 'Over the shoulder'? Answer in 1 word - yes or no.\nASSISTANT:"
             outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
             response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
             if "yes" in response1:
