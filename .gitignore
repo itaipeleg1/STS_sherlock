@@ -6,6 +6,7 @@
 # Media files
 *.mp4
 *.avi
+*.mkv
 
 # Output and cache
 results*/
