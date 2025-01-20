@@ -1,17 +1,6 @@
-# TODO:
-Add converter from csv file to anottation that can be used in the ridge regression.
-
-
-# LLava feature extractor: details
+# Frame Sequence Analysis with LLaVA
 
 A Python tool for analyzing sequences of image frames using the LLaVA (Large Language and Vision Assistant) model. This tool process sequences of frames to detect features
-##
-Versions required:
-```
-pip install transformers==4.46.3
-pip install bitsandbytes==0.41.3
-pip install accelerate==0.26.0
-```
 
 ## Features
 
@@ -48,5 +37,15 @@ root_directory/
 │   └── ...
 └── ...
 ```
+
+## Data Directory
+
+The `data` directory is used to store additional data required for analysis. Ensure that this directory exists in the root of your repository.
+
+## Guidelines
+
+1. **Frame Sampling**: The tool evenly samples frames across each sequence to ensure consistent analysis.
+
+2. **Majority Voting**: Results are determined by majority voting across sampled frames.
 
 
