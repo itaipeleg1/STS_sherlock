@@ -12,9 +12,9 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model: st
     data[data < 0] = 0
     img = nib.Nifti1Image(data, affine=nii.affine)
 
-    plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}',
+    plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}, max r: {np.max(data)}',
                               symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).open_in_browser()
 
 
-path = r"C:\uni\Msc Brain\Lab work\Shiri\STS\for_test\result_llayla_social\sub1\social\social_nonsocial_sub1.nii"
+path = r"/home/new_storage/sherlock/STS_sherlock/projects data/result_llava_music_exp/group/llava_music/social_speak_music.nii"
 plot_voxelwise_encoding_results_on_surface(path, model='face', feature='llava')

@@ -1,8 +1,13 @@
-
+import os
+## Set environment variables for Hugging Face cache
+## This is to avoid running out of space in the default cache location
+os.environ['HF_HOME'] = '/home/new_storage/sherlock/hf_cache'
+os.environ['TRANSFORMERS_CACHE'] = '/home/new_storage/sherlock/hf_cache'
+os.environ['HUGGINGFACE_HUB_CACHE'] = '/home/new_storage/sherlock/hf_cache'
 import torch
 from transformers import BitsAndBytesConfig
 from transformers import pipeline
-import os
+from transformers import AutoProcessor, AutoModelForVision2Seq
 from PIL import Image
 import pandas as pd
 from tqdm import tqdm
@@ -27,21 +32,20 @@ def analyze_frames(root_dir, pipe,
                   save_interval=50,
                   prompts=None):
     
-    # Default prompts If none is provided in Main function
-    if prompts is None:
-        prompts = [
-            ('social', "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"),
-            ('speak', "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answer in 1 word - yes or no.\nASSISTANT:"),
-            ('gaze', "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:")
-        ]
+    #if prompts is None:
+     #   prompts = [
+      #      ('social', "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"),
+       #     ('speak', "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answer in 1 word - yes or no.\nASSISTANT:"),
+        #    ('gaze', "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:")
+        #]
 
-    # Get all sequence directories
+    # Get all TR directories
     seq_dirs = [d for d in os.listdir(root_dir) 
                if os.path.isdir(os.path.join(root_dir, d)) 
                and d.startswith(seq_prefix)]
     seq_dirs.sort(key=lambda x: int(x[len(seq_prefix):]))
     
-    # Apply sequence range filter if specified
+    # Apply TR range (If specified in arguments)
     if seq_range:
         start, end = seq_range
         seq_dirs = [d for d in seq_dirs 
@@ -49,7 +53,7 @@ def analyze_frames(root_dir, pipe,
     
     results = []
     
-    for seq_dir in tqdm(seq_dirs, desc="Processing sequences"):
+    for seq_dir in tqdm(seq_dirs, desc="Processing TR"):
         seq_path = os.path.join(root_dir, seq_dir)
         seq_num = int(seq_dir[len(seq_prefix):])
         
@@ -70,50 +74,54 @@ def analyze_frames(root_dir, pipe,
         sampled_frames = [frame_paths[i] for i in indices]
         
         # Initialize counters for each prompt
-        feature_counts = {name: 0 for name, _ in prompts}
+        social_count = 0
+        gaze_count = 0
+        speak_count= 0
         samples_processed = len(sampled_frames)
         
-        # Process each frame
+        # Figure out a general use of the prompts
         for path in sampled_frames:
             image = Image.open(path)
             
-            # Run each prompt on the image
-            for name, prompt in prompts:
-                outputs = pipe(image, prompt=prompt, generate_kwargs={"max_new_tokens": 200})
-                response = outputs[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-                if "yes" in response:
-                    feature_counts[name] += 1
-        
-        # Calculate binary decisions based on majority vote
-        binary_results = {
-            name: 1 if count > samples_processed/2 else 0
-            for name, count in feature_counts.items()
-        }
-        
-        # Store results
-        result_row = {
-            'sequence': seq_num,
-            'samples_processed': samples_processed,
-            **binary_results
-        }
-        results.append(result_row)
-        
-        print(f"{seq_prefix}{seq_num:04d}: Results: {binary_results}")
+            prompt1 = "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"
+            outputs1 = pipe(image, prompt=prompt1, generate_kwargs={"max_new_tokens": 200})
+            response1 = outputs1[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+            prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
+            outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
+            response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+            prompt3 = "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:"
+            outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
+            response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+            if "yes" in response1:
+               social_count += 1
+            if "yes" in response2:
+               speak_count += 1
+            if "yes" in response3:
+               gaze_count += 1
+
+        # Binary decision based on majority vote
+        gaze = 1 if gaze_count > samples_processed/2 else 0
+        social= 1 if social_count > samples_processed/2 else 0
+        speak = 1 if speak_count > samples_processed/2 else 0
+
+
+        results.append([seq_num, social,  speak, gaze, samples_processed])
+        print(f"TR{seq_num:04d}: {social} ({social_count}/{samples_processed} sampled frames)")
         
         # Save intermediate results
         if seq_num % save_interval == 0:
             results_df = pd.DataFrame(results)
             results_df.to_csv(output_path, index=False)
             print(f"\nIntermediate results saved to {output_path}")
-    
-    # Save final results
-    results_df = pd.DataFrame(results)
+
+    results_df = pd.DataFrame(results, columns=['TR', 'social',"speak", "gaze" ,'samples_processed']) ##for this case
     results_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
     return results_df
 
-# Example usage:
+
 if __name__ == "__main__":
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Analyze frames from video sequences using LLaVA model')
     parser.add_argument('--TR_root', type=str, required=True, help='Root directory containing TR sequences')
@@ -129,15 +137,11 @@ if __name__ == "__main__":
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16
-    )
-
+        )
+    
     model_id = "llava-hf/llava-1.5-7b-hf"
-    pipe = pipeline("image-to-text", 
-                   model=model_id, 
-                   model_kwargs={"quantization_config": quantization_config})
-
-    # Optional: Define custom prompts
-    custom_prompts = []
+    pipe = pipeline("image-to-text", model=model_id, model_kwargs={"quantization_config": quantization_config})
+    custom_prompts = []  ## Should be available in the future
     
     # Run analysis
     results_df = analyze_frames(
