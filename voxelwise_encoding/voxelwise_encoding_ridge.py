@@ -24,7 +24,16 @@ def concat_features(features_list, single_features_dir):
 def main(data_path, annotations_path, mask_path, model, group_dir, original_data_shape, num_subjects, alphas):
     feature_names = models_config_dict[model]
     features = concat_features(feature_names, annotations_path)
-
+        ## Movine average
+    if trial>0:
+        print(f'Applying moving average with window size: {trial}')
+    else:
+        print('No moving average applied')
+    if trial >0:
+        window = np.ones(trial) / trial
+        features = np.array(features).flatten()
+        features = np.convolve(features, window, mode='same')
+        features = features.reshape(-1,1)
     num_features = len(feature_names)
     X = normalize(features, axis=0).astype(np.float32)
 
@@ -120,10 +129,11 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:  # No arguments provided (debug mode)
         # Set default values for debugging
         debug_args = [
-            "--model", 'llava_only_social',
+            "--model", 'llava_music',
             '--fmri_data_path', f"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
             '--annotations_path', f'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-            '--results_dir', f"/home/new_storage/sherlock/STS_sherlock/projects data/result_llava_social_speak",
+            "--isc_mask_path", f"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
+            '--results_dir', f"/home/new_storage/sherlock/STS_sherlock/projects data/result_exp_mask_0TR",
         ]
         args = args.parse_args(debug_args)  # Changed from argparse.ArgumentParse to parser.parse_args
     else:
@@ -138,6 +148,7 @@ if __name__ == '__main__':
     alphas = np.logspace(1, 4, 10)
     original_data_shape = [61, 73, 61]
     num_subjects = 17
+    trial =0
 
     main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, group_dir, original_data_shape,
          num_subjects,alphas)

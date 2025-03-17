@@ -6,7 +6,7 @@ models_config_dict = {
     'social_plus_llava': ['arousal', 'mentalization', 'speaking', 'social_nonsocial', 'valence', 'llava_face', 'llava_social', 'llava_touch'],
     'llava_features': ['llava_face', 'llava_social', 'llava_touch'],
     'llava_only_social': ['llava_social_speak_full'], "llava_music":["social_speak_music"],
-     'llava_only_face': ['llava_face'],
+     'llava_only_face': ['llava_face_1000'],
     'llava_only_face_filled': ['llava_face_filled'],
     "leyla_face": ['face'],
 }
