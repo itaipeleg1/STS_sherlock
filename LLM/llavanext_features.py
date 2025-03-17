@@ -1,152 +1,99 @@
+from llava.model.builder import load_pretrained_model
+from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_image_token
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
+from llava.conversation import conv_templates, SeparatorStyle
+from PIL import Image
+import requests
+import os
+import copy
+import torch
+import sys
+import warnings
+from decord import VideoReader, cpu
+import numpy as np
 
 import torch
-from transformers import BitsAndBytesConfig
-from transformers import pipeline
-from transformers import AutoProcessor, AutoModelForCausalLM
-import os
-from PIL import Image
-import pandas as pd
-from tqdm import tqdm
-import argparse
+print(torch.cuda.is_available())
+# Open the video and extract frames
+video_path = "/home/new_storage/sherlock/STS_sherlock/projects data/Sherlock.S01E01.A.Study.in.Pink.1080p.10bit.BluRay.5.1.x265.HEVC-MZABI.mkv"
+video = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+start_frame = 11928
+end_frame = 11928 + 3*24
+vr = video.get_batch(list(range(start_frame, end_frame))).asnumpy()  # convert to numpy array
 
-def extract_frame_number(filepath):
-    """Extract frame number from filepath."""
-    try:
-        filename = os.path.basename(filepath)
-        number_part = filename.split("_")[-1].split(".")[0]
-        clean_number = ''.join(c for c in number_part if c.isdigit())
-        return int(clean_number)
-    except (ValueError, IndexError):
-        return -1
+warnings.filterwarnings("ignore")
+def load_video(vr, max_frames_num, fps=1, force_sample=False):
+    if max_frames_num == 0:
+        return np.zeros((1, 336, 336, 3))
+    
+    total_frame_num = len(vr)
+    video_time = total_frame_num / video.get_avg_fps()  # use original video's fps
+    fps = round(video.get_avg_fps()/fps)
+    frame_idx = [i for i in range(0, len(vr), fps)]
+    frame_time = [i/fps for i in frame_idx]
+    
+    if len(frame_idx) > max_frames_num or force_sample:
+        sample_fps = max_frames_num
+        uniform_sampled_frames = np.linspace(0, total_frame_num - 1, sample_fps, dtype=int)
+        frame_idx = uniform_sampled_frames.tolist()
+        frame_time = [i/video.get_avg_fps() for i in frame_idx]
+    
+    frame_time = ",".join([f"{i:.2f}s" for i in frame_time])
+    spare_frames = vr[frame_idx]
+    
+    return spare_frames, frame_time, video_time
 
-def analyze_frames(root_dir, pipe, 
-                  samples_per_seq=13,
-                  seq_prefix='TR',
-                  seq_range=None,  
-                  file_extension='.jpg',
-                  output_path='results.csv',
-                  save_interval=50,
-                  prompts=None):
-    
-    # Default prompts If none is provided in Main function
-    if prompts is None:
-        prompts = [
-            ('social', "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"),
-            ('speak', "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answer in 1 word - yes or no.\nASSISTANT:"),
-            ('gaze', "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:")
-        ]
+pretrained = "lmms-lab/LLaVA-Video-7B-Qwen2"
+model_name = "llava_qwen"
+device = "cuda"
+device_map = "auto"
+tokenizer, model, image_processor, max_length = load_pretrained_model(
+    pretrained, 
+    None, 
+    model_name, 
+    torch_dtype="bfloat16", 
+    device_map=device_map,
+    cache_dir="/home/new_storage/sherlock/hf_cache",
+    attn_implementation=None
+)
+model.eval()
 
-    # Get all sequence directories
-    seq_dirs = [d for d in os.listdir(root_dir) 
-               if os.path.isdir(os.path.join(root_dir, d)) 
-               and d.startswith(seq_prefix)]
-    seq_dirs.sort(key=lambda x: int(x[len(seq_prefix):]))
-    
-    # Apply sequence range filter if specified
-    if seq_range:
-        start, end = seq_range
-        seq_dirs = [d for d in seq_dirs 
-                   if start <= int(d[len(seq_prefix):]) <= end]
-    
-    results = []
-    
-    for seq_dir in tqdm(seq_dirs, desc="Processing sequences"):
-        seq_path = os.path.join(root_dir, seq_dir)
-        seq_num = int(seq_dir[len(seq_prefix):])
-        
-        # Get and sort frame paths
-        frame_paths = [
-            os.path.join(seq_path, f) for f in os.listdir(seq_path)
-            if os.path.isfile(os.path.join(seq_path, f)) 
-            and f.endswith(file_extension)
-        ]
-        frame_paths.sort(key=extract_frame_number)
-        
-        # Sample frames evenly
-        total_frames = len(frame_paths)
-        indices = [
-            i * (total_frames - 1) // (samples_per_seq - 1) 
-            for i in range(samples_per_seq)
-        ]
-        sampled_frames = [frame_paths[i] for i in indices]
-        
-        # Initialize counters for each prompt
-        feature_counts = {name: 0 for name, _ in prompts}
-        samples_processed = len(sampled_frames)
-        
-        # Process each frame
-        for path in sampled_frames:
-            image = Image.open(path)
-            
-            # Run each prompt on the image
-            for name, prompt in prompts:
-                outputs = pipe(image, prompt=prompt, generate_kwargs={"max_new_tokens": 200})
-                response = outputs[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-                if "yes" in response:
-                    feature_counts[name] += 1
-        
-        # Calculate binary decisions based on majority vote
-        binary_results = {
-            name: 1 if count > samples_processed/2 else 0
-            for name, count in feature_counts.items()
-        }
-        
-        # Store results
-        result_row = {
-            'sequence': seq_num,
-            'samples_processed': samples_processed,
-            **binary_results
-        }
-        results.append(result_row)
-        
-        print(f"{seq_prefix}{seq_num:04d}: Results: {binary_results}")
-        
-        # Save intermediate results
-        if seq_num % save_interval == 0:
-            results_df = pd.DataFrame(results)
-            results_df.to_csv(output_path, index=False)
-            print(f"\nIntermediate results saved to {output_path}")
-    
-    # Save final results
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(output_path, index=False)
-    print(f"\nFinal results saved to {output_path}")
-    return results_df
+max_frames_num = 64
+video, frame_time, video_time = load_video(vr, max_frames_num, 1, force_sample=True)
+video = image_processor.preprocess(video, return_tensors="pt")["pixel_values"].cuda().half()
+video = [video]
 
-# Example usage:
-if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Analyze frames from video sequences using LLaVA model')
-    parser.add_argument('--TR_root', type=str, required=True, help='Root directory containing TR sequences')
-    parser.add_argument('--output_path', type=str, required=True, help='Path to save results CSV')
-    parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
-    parser.add_argument('--samples_per_seq', type=int, default=13, help='Number of frames to sample per sequence')
-    parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
-    
-    args = parser.parse_args()
+# Rest of the code remains the same...
 
-    # Configure model
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16
-    )
+conv_template = "qwen_1_5"
 
-    model_id = "llava-hf/llava-1.5-7b-hf"
-    pipe = pipeline("image-to-text", 
-                   model=model_id, 
-                   model_kwargs={"quantization_config": quantization_config})
+# Simple timing information
+time_instruction = f"The video lasts for {video_time:.2f} seconds with {len(video[0])} sampled frames."
 
-    # Optional: Define custom prompts
-    custom_prompts = []
-    
-    # Run analysis
-    results_df = analyze_frames(
-        root_dir=args.TR_root,
-        pipe=pipe,  
-        seq_range=(args.start_seq, args.end_seq),
-        output_path=args.output_path,
-        samples_per_seq=args.samples_per_seq,
-        save_interval=args.save_interval,
-        prompts=custom_prompts
-    )
+# Change this to your specific question
+your_question = "Is there social interaction in this video?"
+
+# Combine with the image token and timing information
+question = DEFAULT_IMAGE_TOKEN + f"\n{time_instruction}\n{your_question}"
+
+# Set up the conversation
+conv = copy.deepcopy(conv_templates[conv_template])
+conv.append_message(conv.roles[0], question)
+conv.append_message(conv.roles[1], None)
+prompt_question = conv.get_prompt()
+
+# Generate response
+input_ids = tokenizer_image_token(prompt_question, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(device)
+cont = model.generate(
+    input_ids,
+    images=video,
+    modalities=["video"],
+    do_sample=False,
+    temperature=0,
+    max_new_tokens=1, 
+)
+
+# Output the result
+text_outputs = tokenizer.batch_decode(cont, skip_special_tokens=True)[0].strip()
+print(f"Question: {your_question}")
+print(f"Answer: {text_outputs}")
