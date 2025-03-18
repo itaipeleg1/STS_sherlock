@@ -96,12 +96,12 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
     
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'llava_music',
+        "--model", 'llava_only_social',
         '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data",
         '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_lateral_occipital_social_range_music',
-        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\lateral_occipital_mask.nii",
-        "--trials", "20"
+        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_range',
+        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
+        "--trials", "60"
     ])
     
     start_time = time.time()
