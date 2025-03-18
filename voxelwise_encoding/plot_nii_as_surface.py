@@ -16,5 +16,5 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model: st
                               symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).open_in_browser()
 
 
-path = r"/home/new_storage/sherlock/STS_sherlock/projects data/result_llava_music_exp/group/llava_music/social_speak_music.nii"
+path = r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_lateral_occipital_social_range_music\group\llava_music\trial_1\llava_music_r.nii"
 plot_voxelwise_encoding_results_on_surface(path, model='face', feature='llava')
