@@ -19,7 +19,8 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
     feature_names = models_config_dict[model]
     features = concat_features(feature_names, annotations_path)
     center = False
-    before = True  
+    before = False  
+    ## If both false then future only
 
     
     if trials > 1:
@@ -111,8 +112,8 @@ if __name__ == '__main__':
         "--model", 'llava_only_social',
         '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data",
         '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_beforeaveraging_range',
-        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
+        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_lateral_occipital_social_afteraveraging_range',
+        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\lateral_occipital_mask.nii",
         "--trials", "60"
     ])
     
