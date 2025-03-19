@@ -18,11 +18,23 @@ def concat_features(features_list, single_features_dir):
 def main(data_path, annotations_path, mask_path, model, results_dir, original_data_shape, num_subjects, alphas, trials):
     feature_names = models_config_dict[model]
     features = concat_features(feature_names, annotations_path)
+    center = False
+    before = True  
+
     
-    # Apply moving average if trials > 0
     if trials > 1:
-        window = np.ones(trials) / trials
-        features = np.convolve(features.flatten(), window, mode='same').reshape(-1, 1)
+        window = np.ones(trials) / trials  # Define the averaging window
+
+        if center:  
+            features = np.convolve(features.flatten(), window, mode='same').reshape(-1, 1)  # Centered averaging
+
+        elif before:
+            features = np.convolve(features.flatten(), window, mode='full')[:len(features)].reshape(-1, 1)  # Past-only averaging
+
+        else:  
+            features = np.convolve(features.flatten(), window, mode='full')[trials-1:len(features)+trials-1].reshape(-1, 1)  # Future-only averaging
+
+
     
     num_features = len(feature_names)
     X = normalize(features, axis=0).astype(np.float32)
@@ -37,7 +49,7 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         
         fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
         mask = mask_path if mask_path else None
-        
+
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
         data_clean = data_clean[:len(X)] ##making sure same dims
@@ -99,7 +111,7 @@ if __name__ == '__main__':
         "--model", 'llava_only_social',
         '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data",
         '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_range',
+        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_beforeaveraging_range',
         "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
         "--trials", "60"
     ])

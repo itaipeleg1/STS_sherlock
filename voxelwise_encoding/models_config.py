@@ -2,7 +2,7 @@ import numpy as np
 
 models_config_dict = {
     'full': ['amplitude', 'arousal', 'AverME', 'face', 'hue', 'indoor_outdoor', 'mentalization', 'music', 'pitchHz', 'pixel', 'saturation', 'social_nonsocial', 'speaking', 'touch', 'valence', 'written_text'],
-    'social': ['social_nonsocial2'],
+    'social': ['social_nonsocial'],
     'social_plus_llava': ['arousal', 'mentalization', 'speaking', 'social_nonsocial', 'valence', 'llava_face', 'llava_social', 'llava_touch'],
     'llava_features': ['llava_face', 'llava_social', 'llava_touch'],
     ## This is the correct annotation for the llava social features
