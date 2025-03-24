@@ -6,6 +6,7 @@
 # Media files
 *.mp4
 *.avi
+*.jpg
 
 # Output and cache
 results*/
@@ -13,7 +14,7 @@ result_llava_socialspeak/
 result_llayla_social/
 frames/
 __pycache__/
-
+frames_c4/
 projects data/result_llava_social_speak/
 projects data/result_llava_music_exp/
 
