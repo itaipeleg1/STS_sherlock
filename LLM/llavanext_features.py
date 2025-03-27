@@ -14,11 +14,14 @@ import numpy as np
 
 import torch
 print(torch.cuda.is_available())
+
+
+
 # Open the video and extract frames
 video_path = "/home/new_storage/sherlock/STS_sherlock/projects data/Sherlock.S01E01.A.Study.in.Pink.1080p.10bit.BluRay.5.1.x265.HEVC-MZABI.mkv"
 video = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-start_frame = 11928
-end_frame = 11928 + 3*24
+start_frame = 1116
+end_frame = 1116 + 3*24
 vr = video.get_batch(list(range(start_frame, end_frame))).asnumpy()  # convert to numpy array
 
 warnings.filterwarnings("ignore")
@@ -51,19 +54,18 @@ tokenizer, model, image_processor, max_length = load_pretrained_model(
     pretrained, 
     None, 
     model_name, 
-    torch_dtype="bfloat16", 
+    torch_dtype="float16", 
     device_map=device_map,
     cache_dir="/home/new_storage/sherlock/hf_cache",
     attn_implementation=None
 )
 model.eval()
 
-max_frames_num = 64
+max_frames_num = 9
 video, frame_time, video_time = load_video(vr, max_frames_num, 1, force_sample=True)
 video = image_processor.preprocess(video, return_tensors="pt")["pixel_values"].cuda().half()
 video = [video]
 
-# Rest of the code remains the same...
 
 conv_template = "qwen_1_5"
 
@@ -89,8 +91,8 @@ cont = model.generate(
     images=video,
     modalities=["video"],
     do_sample=False,
-    temperature=0,
-    max_new_tokens=1, 
+    temperature=1,
+    max_new_tokens=100, 
 )
 
 # Output the result
