@@ -10,6 +10,9 @@ A Python tool for analyzing sequences of image frames using the LLaVA (Large Lan
 - Automatic intermediate saving of results
 - Configurable prompts for different types of analysis
 - Command-line interface for easy use
+##
+- Under construction : Annotating with llava-video 
+##
 
 ## Arguments
 
