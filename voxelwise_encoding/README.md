@@ -3,6 +3,7 @@
 ### Overview
  Ridge Regression for voxelwise encoding analysis of fMRI data, correlating brain activity with various features extracted from video content.
 
+
 ### Input Requirements
 
 #### fMRI Data
@@ -19,8 +20,11 @@
   - objects.npy
   - llava_social_speak.npy
 
-#### ISC Mask (Optional)
-Currently not updated in this repo
-- **Path**: `isc_mask_path/isc_mask.nii.gz`
+#### Mask (Optional)
+
 - **Format**: 3D Nifti file
 - **Note**: Without mask, whole brain analysis will be performed (longer processing time)
+
+#### Trials (optional)
+
+- **Note**: This option was added recently to investigate the influence of moving average on annotation and it's relation to the Linear model
