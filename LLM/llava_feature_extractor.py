@@ -161,7 +161,8 @@ if __name__ == "__main__":
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
     
     args = parser.parse_args()
-
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Running on device: {device}")
     # Configure model
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
