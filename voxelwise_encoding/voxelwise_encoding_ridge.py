@@ -54,7 +54,7 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         save_dir = os.path.join(results_dir, f'sub{subj}/{model}/trial_{trials}/')
         os.makedirs(save_dir, exist_ok=True)
         
-        #fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
         #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_no_blur_no_censor_ica.nii.gz')
         mask = mask_path if mask_path else None
 
