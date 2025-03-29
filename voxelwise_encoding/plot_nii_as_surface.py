@@ -3,7 +3,7 @@ import numpy as np
 from nilearn import plotting
 
 
-def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model: str, feature: str):
+def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str, feature:str):
     nii = nib.load(results_file_path)
     data = nii.get_fdata()
     # replace nan with 0, as nans are voxels that are outside the ISC mask
@@ -18,3 +18,4 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model: st
 
 path = r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_llava_only_social_C46\group\c4\trial_8\annotation_c4.nii"
 plot_voxelwise_encoding_results_on_surface(path, model='face', feature='llava')
+
