@@ -10,6 +10,7 @@ from transformers import pipeline
 from transformers import AutoProcessor, AutoModelForVision2Seq
 from PIL import Image
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 import argparse
 
@@ -29,8 +30,8 @@ def analyze_frames(root_dir, pipe,
                   seq_range=None,  
                   file_extension='.jpg',
                   output_path='results.csv',
-                  save_interval=50,
-                  prompts=None):
+                  save_interval=50,tr_ref=2,
+                    ):
     
     #if prompts is None:
      #   prompts = [
@@ -52,18 +53,20 @@ def analyze_frames(root_dir, pipe,
                    if start <= int(d[len(seq_prefix):]) <= end]
     
     results = []
-    
-    for seq_dir in tqdm(seq_dirs, desc="Processing TR"):
-        seq_path = os.path.join(root_dir, seq_dir)
-        seq_num = int(seq_dir[len(seq_prefix):])
-        
+    i = 0
+    while i <= len(seq_dirs)-tr_ref:
+        group_dirs = seq_dirs[i:i+tr_ref]
+        group_nums = [int(d[len(seq_prefix):]) for d in group_dirs]
+        group_label = f"{group_nums[0]:04d}_{group_nums[-1]:04d}"
+        print(f"Processing group: {group_label}")
         # Get and sort frame paths
-        frame_paths = [
-            os.path.join(seq_path, f) for f in os.listdir(seq_path)
-            if os.path.isfile(os.path.join(seq_path, f)) 
-            and f.endswith(file_extension)
-        ]
-        frame_paths.sort(key=extract_frame_number)
+        frame_paths = []
+        for seq_dir in group_dirs:
+            seq_path = os.path.join(root_dir, seq_dir)
+            frames = [os.path.join(seq_path, f) for f in os.listdir(seq_path)
+                    if f.endswith(file_extension)]
+            frames.sort(key=extract_frame_number)
+            frame_paths.extend(frames)
         
         # Sample frames evenly
         total_frames = len(frame_paths)
@@ -78,6 +81,7 @@ def analyze_frames(root_dir, pipe,
         gaze_count = 0
         speak_count= 0
         samples_processed = len(sampled_frames)
+        final=0
         
         # Figure out a general use of the prompts
         for path in sampled_frames:
@@ -89,9 +93,10 @@ def analyze_frames(root_dir, pipe,
             prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
             outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
             response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-            prompt3 = "USER: <image>\nIs the angle of this image is 'Over the shoulder'? Answer in 1 word - yes or no.\nASSISTANT:"
+            prompt3 = "USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer in 1 word - yes or no.\nASSISTANT:"
             outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
             response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+
             if "yes" in response1:
                social_count += 1
             if "yes" in response2:
@@ -99,22 +104,45 @@ def analyze_frames(root_dir, pipe,
             if "yes" in response3:
                gaze_count += 1
 
+        threshold = 0.8
         # Binary decision based on majority vote
-        gaze = 1 if gaze_count > samples_processed/2 else 0
-        social= 1 if social_count > samples_processed/2 else 0
-        speak = 1 if speak_count > samples_processed/2 else 0
+        gaze = 1 if gaze_count > threshold*samples_processed else 0
+        social= 1 if social_count > threshold*samples_processed else 0
+        speak = 1 if speak_count > threshold*samples_processed else 0
+        if social ==1:
+            final = 1
+        elif speak==1 and gaze==1:
+            final = 1
+        else:
+            final = 0
 
-
-        results.append([seq_num, social,  speak, gaze, samples_processed])
-        print(f"TR{seq_num:04d}: {social} ({social_count}/{samples_processed} sampled frames)")
+        results.append([group_label, social,  speak, gaze, final,samples_processed])
+        print(f"TR{group_label}: {social} ({social_count}/{samples_processed} sampled frames)")
         
         # Save intermediate results
-        if seq_num % save_interval == 0:
-            results_df = pd.DataFrame(results)
+        if group_nums[-1] % save_interval == 0:
+            
+            results_df = pd.DataFrame(results,columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed'])
             results_df.to_csv(output_path, index=False)
             print(f"\nIntermediate results saved to {output_path}")
 
-    results_df = pd.DataFrame(results, columns=['TR', 'social',"speak", "gaze" ,'samples_processed']) ##for this case
+        i += tr_ref #  no overlap between groups
+
+    results_df = pd.DataFrame(results, columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed']) ##for this case
+    annotation = results_df["final"]
+    annotation = np.array(annotation) ## to make it 2D in numpy
+    ## duplicate the annotation
+    annotation = np.repeat(annotation, tr_ref)
+    #annotation = np.reshape(annotation, (-1, 1))
+    ## impute control annotation
+    orig = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/social_nonsocial.npy")
+    orig = orig.flatten()
+    anima = orig[:27]
+    annotation = np.concatenate((annotation, anima), axis=0)
+    t1 = annotation[:946]
+    t2 = annotation[946:]
+    annotation = np.concatenate([t1,anima,t2])
+    np.save(os.path.join(root_dir, f'social_non_social_llava(TR{tr_ref}).npy'), annotation)
     results_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
     return results_df
@@ -129,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
     parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=13, help='Number of frames to sample per sequence')
+    parser.add_argument('--tr_ref', type=int, default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
     
     args = parser.parse_args()
