@@ -115,7 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='full',
                         help='Model options: full, social, social_plus_llava, llava_features, llava_only_social')
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
-    
+
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
         "--model", 'c4',
         '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data\C4",
