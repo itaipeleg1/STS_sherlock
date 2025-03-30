@@ -41,8 +41,9 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
     num_features = len(feature_names)
     X = normalize(features, axis=0).astype(np.float32)
 
+
     ##Hemodynamic lag correction delete in case of sherlock (corrected in the data)
-    #hrf_shift = 3
+    #hrf_shift = 4
     #X = np.roll(X, hrf_shift, axis=0)
     #X[:hrf_shift, :] = 0
 
@@ -55,8 +56,8 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         save_dir = os.path.join(results_dir, f'sub{subj}/{model}/trial_{trials}/')
         os.makedirs(save_dir, exist_ok=True)
         
-        #fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
-        fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
+        #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
@@ -117,21 +118,21 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
     
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'c4',
-        '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data\C4",
-        '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_social_C4_afteraveraging_range',
-        #"--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\ffa_mask.nii",
-        "--trials", "3"
+        "--model", 'social',
+        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
+        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/leyla_check',
+        #"--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
+        "--trials", "1"
     ])
     
     start_time = time.time()
     print(f'Model type: {args.model}')
     
     alphas = np.logspace(1, 4, 10)
-    #original_data_shape = [61, 73, 61]
-    original_data_shape = [64, 76, 64]
-    num_subjects = 1
+    original_data_shape = [61, 73, 61]
+    #original_data_shape = [64, 76, 64]
+    num_subjects = 17
     for trial in range(1, args.trials+1):
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)

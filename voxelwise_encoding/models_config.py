@@ -8,7 +8,7 @@ models_config_dict = {
     ## This is the correct annotation for the llava social features
     'llava_only_social': ['llava_social_speak_full'],
     "c4":["annotation_c4"],
-      "llava_music":["social_speak_music"],
+    "llava_music":["social_speak_music"],
      'llava_only_face': ['llava_face'],
     'llava_only_face_filled': ['llava_face_filled'],
     "leyla_face": ['face'],

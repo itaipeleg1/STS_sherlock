@@ -104,7 +104,7 @@ def analyze_frames(root_dir, pipe,
             if "yes" in response3:
                gaze_count += 1
 
-        threshold = 0.8
+        threshold = 0.7
         # Binary decision based on majority vote
         gaze = 1 if gaze_count > threshold*samples_processed else 0
         social= 1 if social_count > threshold*samples_processed else 0
@@ -120,7 +120,7 @@ def analyze_frames(root_dir, pipe,
         print(f"TR{group_label}: {social} ({social_count}/{samples_processed} sampled frames)")
         
         # Save intermediate results
-        if group_nums[-1] % save_interval == 0:
+        if len(results) % save_interval == 0:
             
             results_df = pd.DataFrame(results,columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed'])
             results_df.to_csv(output_path, index=False)
@@ -142,6 +142,8 @@ def analyze_frames(root_dir, pipe,
     t1 = annotation[:946]
     t2 = annotation[946:]
     annotation = np.concatenate([t1,anima,t2])
+    annotation = annotation[:1976]
+    annotation = np.reshape(annotation, (-1, 1))
     np.save(os.path.join(root_dir, f'social_non_social_llava(TR{tr_ref}).npy'), annotation)
     results_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
@@ -180,6 +182,6 @@ if __name__ == "__main__":
         seq_range=(args.start_seq, args.end_seq),
         output_path=args.output_path,
         samples_per_seq=args.samples_per_seq,
+        tr_ref=args.tr_ref,
         save_interval=args.save_interval,
-        prompts=custom_prompts
     )

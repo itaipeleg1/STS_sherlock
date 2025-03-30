@@ -13,9 +13,9 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str
     img = nib.Nifti1Image(data, affine=nii.affine)
 
     plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}, max r: {np.max(data)}',
-                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).open_in_browser()
+                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html("/home/new_storage/sherlock/STS_sherlock/projects data/results/leyla_check/map2.html")
 
 
-path = r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_llava_only_social_C46\group\c4\trial_8\annotation_c4.nii"
+path = r"/home/new_storage/sherlock/STS_sherlock/projects data/results/leyla_check/sub4/social/trial_1/social_nonsocial_sub4.nii"
 plot_voxelwise_encoding_results_on_surface(path, model='face', feature='llava')
 
