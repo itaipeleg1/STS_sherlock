@@ -2,7 +2,7 @@
 *.nii
 *.nii.gz
 
-
+*.pt
 # Media files
 *.mp4
 *.avi
