@@ -55,8 +55,8 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         save_dir = os.path.join(results_dir, f'sub{subj}/{model}/trial_{trials}/')
         os.makedirs(save_dir, exist_ok=True)
         
-        #fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
-        fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
+        #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
@@ -105,6 +105,7 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
     r_mean = np.mean(r_nifti_group, axis=0)
     weight_mean = np.mean(r_per_feature_nifti_group, axis=0)
     save_group_nii(model, r_mean, weight_mean, group_dir, feature_names, img_affine)
+    print(f'Group results saved. Max r: {np.max(r_mean[~np.isnan(r_mean)])}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -117,21 +118,21 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'c4',
-        '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data\C4",
+        "--model", 'llava_video_3s',
+        '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data",
         '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_social_C4_afteraveraging_range',
-        #"--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\ffa_mask.nii",
-        "--trials", "3"
+        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_video3s_afteraveraging_range',
+        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
+        "--trials", "5"
     ])
     
     start_time = time.time()
     print(f'Model type: {args.model}')
     
     alphas = np.logspace(1, 4, 10)
-    #original_data_shape = [61, 73, 61]
-    original_data_shape = [64, 76, 64]
-    num_subjects = 1
+    original_data_shape = [61, 73, 61]
+    #original_data_shape = [64, 76, 64]
+    num_subjects = 17
     for trial in range(1, args.trials+1):
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
