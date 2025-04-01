@@ -11,6 +11,45 @@ import sys
 
 from utils import clean_image, save_group_nii, save_as_nii
 from models_config import models_config_dict
+import os
+import torch
+import numpy as np
+
+def load_cls_matrix(embedding_folder, sort_by_index=True, return_indices=False):
+    """
+    Loads CLS embeddings saved as .pt files into a NumPy matrix.
+
+    Args:
+        embedding_folder (str or Path): Path to the folder with .pt embeddings.
+        sort_by_index (bool): Whether to sort files by numeric filename.
+        return_indices (bool): If True, also return the sorted list of indices.
+
+    Returns:
+        np.ndarray: Matrix of shape (n_segments, embed_dim)
+        list (optional): List of segment/frame indices
+    """
+    embedding_folder = Path(embedding_folder)
+    files = [f for f in embedding_folder.glob("*.pt")]
+
+    if sort_by_index:
+        files = sorted(files, key=lambda x: int(x.stem))
+
+    embeddings = []
+    indices = []
+
+    for f in files:
+        tensor = torch.load(f)
+        if tensor.dim() > 1:
+            tensor = tensor.view(-1)
+        embeddings.append(tensor.cpu().numpy())
+        indices.append(int(f.stem))
+
+    matrix = np.stack(embeddings)
+
+    if return_indices:
+        return matrix, indices
+    return matrix
+
 
 def concat_features(features_list, single_features_dir):
     processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy')) for item in features_list]
@@ -56,8 +95,8 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         save_dir = os.path.join(results_dir, f'sub{subj}/{model}/trial_{trials}/')
         os.makedirs(save_dir, exist_ok=True)
         
-        #fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
-        fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-23_task-citizenfour_bold_no_blur_no_censor.nii.gz')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
+        #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-23_task-citizenfour_bold_no_blur_no_censor.nii.gz')
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
@@ -118,21 +157,21 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'c4',
-        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data/C4",
+        "--model", 'cls',
+        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/C4_check',
-        #"--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
-        "--trials", "1"
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/lavva_video_6s',
+       # "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
+        "--trials", "2"
     ])
     
     start_time = time.time()
     print(f'Model type: {args.model}')
     
     alphas = np.logspace(1, 4, 10)
-    #original_data_shape = [61, 73, 61]
-    original_data_shape = [64, 76, 64]
-    num_subjects = 1
+    original_data_shape = [61, 73, 61]
+    #original_data_shape = [64, 76, 64]
+    num_subjects = 17
     for trial in range(1, args.trials+1):
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
