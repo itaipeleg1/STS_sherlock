@@ -157,12 +157,12 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'cls',
+        "--model", 'llava_1TR_onlysocial',
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/lavva_video_6s',
-       # "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
-        "--trials", "2"
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_onlysocial_lateral_occipital',
+        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/lateral_occipital_mask.nii",
+        "--trials", "1"
     ])
     
     start_time = time.time()
@@ -175,6 +175,11 @@ if __name__ == '__main__':
     for trial in range(1, args.trials+1):
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
+    
+    for i in range (1,11):
+        model = f'llava_{i}TR_onlysocial'
+        main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
+             original_data_shape, num_subjects, alphas, i)
     
     duration = round((time.time() - start_time) / 60)
     print(f'Duration: {duration} mins')

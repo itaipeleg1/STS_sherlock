@@ -24,13 +24,13 @@ def extract_frame_number(filepath):
     except (ValueError, IndexError):
         return -1
 
-def analyze_frames(root_dir, pipe, 
+def analyze_frames(root_dir, pipe,tr_ref, 
                   samples_per_seq=13,
                   seq_prefix='TR',
                   seq_range=None,  
                   file_extension='.jpg',
                   output_path='results.csv',
-                  save_interval=50,tr_ref=2,
+                  save_interval=50,
                     ):
     
     #if prompts is None:
@@ -39,11 +39,11 @@ def analyze_frames(root_dir, pipe,
        #     ('speak', "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answer in 1 word - yes or no.\nASSISTANT:"),
         #    ('gaze', "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:")
         #]
-
+    samples_per_seq = samples_per_seq*tr_ref
     # Get all TR directories
     seq_dirs = [d for d in os.listdir(root_dir) 
                if os.path.isdir(os.path.join(root_dir, d)) 
-               and d.startswith(seq_prefix)]
+               and d.startswith(seq_prefix)] 
     seq_dirs.sort(key=lambda x: int(x[len(seq_prefix):]))
     
     # Apply TR range (If specified in arguments)
@@ -104,15 +104,15 @@ def analyze_frames(root_dir, pipe,
             if "yes" in response3:
                gaze_count += 1
 
-        threshold = 0.7
+        threshold = 0.5
         # Binary decision based on majority vote
         gaze = 1 if gaze_count > threshold*samples_processed else 0
         social= 1 if social_count > threshold*samples_processed else 0
         speak = 1 if speak_count > threshold*samples_processed else 0
         if social ==1:
             final = 1
-        elif speak==1 and gaze==1:
-            final = 1
+        #elif speak==1 and gaze==1:
+         #   final = 1
         else:
             final = 0
 
@@ -130,23 +130,25 @@ def analyze_frames(root_dir, pipe,
 
     results_df = pd.DataFrame(results, columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed']) ##for this case
     annotation = results_df["final"]
-    annotation = np.array(annotation) ## to make it 2D in numpy
+    annotation = np.array(annotation)
     ## duplicate the annotation
     annotation = np.repeat(annotation, tr_ref)
-    #annotation = np.reshape(annotation, (-1, 1))
-    ## impute control annotation
+
+    ## add the aniamtion "let's all go to the movies" and save the annotation array
+    ## 27 TR sequences
     orig = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/social_nonsocial.npy")
     orig = orig.flatten()
     anima = orig[:27]
-    annotation = np.concatenate((annotation, anima), axis=0)
+    annotation = np.concatenate((anima,annotation), axis=0)
     t1 = annotation[:946]
     t2 = annotation[946:]
     annotation = np.concatenate([t1,anima,t2])
     annotation = annotation[:1976]
     annotation = np.reshape(annotation, (-1, 1))
-    np.save(os.path.join(root_dir, f'social_non_social_llava(TR{tr_ref}).npy'), annotation)
+    np.save(os.path.join(root_dir, f'llava_pics_social_non_social(TR{tr_ref}).npy'), annotation)
     results_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
+    print(f"\nNumpy of annotation is saved to {os.path.join(root_dir, f'llava_pics_social_non_social(TR{tr_ref}).npy')} with shape {annotation.shape}")
     return results_df
 
 
@@ -155,11 +157,11 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Analyze frames from video sequences using LLaVA model')
     parser.add_argument('--TR_root', type=str, required=True, help='Root directory containing TR sequences')
-    parser.add_argument('--output_path', type=str, required=True, help='Path to save results CSV')
+    parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
     parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=13, help='Number of frames to sample per sequence')
-    parser.add_argument('--tr_ref', type=int, default=1, help='How big is the reference TR')
+    parser.add_argument('--tr_ref', type=int, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
     
     args = parser.parse_args()
@@ -174,14 +176,16 @@ if __name__ == "__main__":
     model_id = "llava-hf/llava-1.5-7b-hf"
     pipe = pipeline("image-to-text", model=model_id, model_kwargs={"quantization_config": quantization_config})
     custom_prompts = []  ## Should be available in the future
-    
-    # Run analysis
-    results_df = analyze_frames(
-        root_dir=args.TR_root,
-        pipe=pipe,  
-        seq_range=(args.start_seq, args.end_seq),
-        output_path=args.output_path,
-        samples_per_seq=args.samples_per_seq,
-        tr_ref=args.tr_ref,
-        save_interval=args.save_interval,
-    )
+    for tr_ref in range(11,13):
+        print(f"Processing TR reference: {tr_ref}")
+        # Run analysis
+        output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_pics_{tr_ref}TR.csv"
+        results_df = analyze_frames(
+            root_dir=args.TR_root,
+            pipe=pipe,  
+            seq_range=(args.start_seq, args.end_seq),
+            output_path=output,
+            samples_per_seq=args.samples_per_seq,
+            tr_ref=tr_ref,
+            save_interval=args.save_interval,
+        )

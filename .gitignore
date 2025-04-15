@@ -1,7 +1,7 @@
  # Data files
 *.nii
 *.nii.gz
-
+*.csv
 *.pt
 # Media files
 *.mp4
