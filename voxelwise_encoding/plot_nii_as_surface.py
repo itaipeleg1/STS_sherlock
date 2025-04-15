@@ -16,6 +16,10 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str
                               symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html("/home/new_storage/sherlock/STS_sherlock/projects data/results/lavva_video_3s/map_6_1.html")
 
 
+<<<<<<< HEAD
 path = r"/home/new_storage/sherlock/STS_sherlock/projects data/results/lavva_video_6s/group/llava_video_6s/trial_1/llava_6s_video_results_primitives.nii"
+=======
+path = r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_video6s_afteraveraging\group\llava_video_6s\trial_1\llava_6s_video_results_primitives.nii"
+>>>>>>> 8256c68c8838febdd0b829bc63d0abf044e524a8
 plot_voxelwise_encoding_results_on_surface(path, model='face', feature='llava')
 
