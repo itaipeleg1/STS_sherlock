@@ -176,7 +176,7 @@ if __name__ == "__main__":
     model_id = "llava-hf/llava-1.5-7b-hf"
     pipe = pipeline("image-to-text", model=model_id, model_kwargs={"quantization_config": quantization_config})
     custom_prompts = []  ## Should be available in the future
-    for tr_ref in range(11,13):
+    for tr_ref in range(13,23):
         print(f"Processing TR reference: {tr_ref}")
         # Run analysis
         output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_pics_{tr_ref}TR.csv"

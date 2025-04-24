@@ -52,7 +52,7 @@ def load_cls_matrix(embedding_folder, sort_by_index=True, return_indices=False):
 
 
 def concat_features(features_list, single_features_dir):
-    processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy')) for item in features_list]
+    processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy'),allow_pickle=True) for item in features_list]
     return np.concatenate(processed_annotations, axis=1)
 
 def main(data_path, annotations_path, mask_path, model, results_dir, original_data_shape, num_subjects, alphas, trials):
@@ -158,12 +158,12 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'llava_video_3s',
-        '--fmri_data_path', r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\fmri_data",
-        '--annotations_path', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\annotations',
-        '--results_dir', r'C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\results\exp_sts_social_video3s_afteraveraging_range',
-        "--isc_mask_path", r"C:\uni\Msc Brain\Lab work\STS_sherlock\projects data\mask\sts_mask.nii",
-        "--trials", "5"
+        "--model", 'llava_1TR_video',
+        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
+        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_video_TRrange_onlysocial_FFA',
+        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
+        "--trials", "1"
     ])
     
     start_time = time.time()
@@ -177,8 +177,8 @@ if __name__ == '__main__':
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
     
-    for i in range (1,11):
-        model = f'llava_{i}TR_onlysocial'
+    for i in range (1,10):
+        model = f'llava_{i}TR_video'
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
              original_data_shape, num_subjects, alphas, i)
     
