@@ -1,24 +1,37 @@
- # Data files
+# Data files
 *.nii
 *.nii.gz
 *.csv
+*.npy
 *.pt
+*.pth
+*.pkl
+*.pkl.gz
+
 # Media files
 *.mp4
 *.avi
+*.mkv
 *.jpg
 *.png
-*.mkv
+
 # Output and cache
+__pycache__/
+*.log
+*.tmp
+*.bak
+
+# Model results and folders
 results*/
 result_llava_socialspeak/
 result_llayla_social/
 frames/
-__pycache__/
 frames_c4/
+
+# Project data (mark as directory)
+projects data/
 projects data/result_llava_social_speak/
-projects data/result_llava_music_exp/
-projects data/result_llava_music_exp2/
-projects data/result_llava_music_exp10TR/
+projects data/result_llava_music_exp*/
 projects data/face_mark/
-projects data/results/Sherlock.S01E01.A.Study.in.Pink.1080p.10bit.BluRay.5.1.x265.HEVC-MZABI.mkv
+projects data/results/
+projects data/results/*.mkv
