@@ -7,13 +7,29 @@ import time
 import argparse
 import logging
 import sys
-
-
+from pathlib import Path
+from nilearn.glm.first_level import glover_hrf
 from utils import clean_image, save_group_nii, save_as_nii
 from models_config import models_config_dict
 import os
 import torch
 import numpy as np
+
+
+def create_lagged_features(X, lags=[0, 1, 2, 3, 4]):
+    """
+    X: (n_samples, n_features)
+    lags: list of lags in number of TRs
+    """
+    lagged_X = []
+    for lag in lags:
+        if lag == 0:
+            lagged_X.append(X)
+        else:
+            lagged = np.roll(X, shift=lag, axis=0)
+            lagged[:lag, :] = 0  # Zero padding the beginning
+            lagged_X.append(lagged)
+    return np.hstack(lagged_X)
 
 def load_cls_matrix(embedding_folder, sort_by_index=True, return_indices=False):
     """
@@ -55,13 +71,14 @@ def concat_features(features_list, single_features_dir):
     processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy'),allow_pickle=True) for item in features_list]
     return np.concatenate(processed_annotations, axis=1)
 
-def main(data_path, annotations_path, mask_path, model, results_dir, original_data_shape, num_subjects, alphas, trials):
+def main(data_path, annotations_path, mask_path , model, results_dir, original_data_shape, num_subjects, alphas, trials):
     feature_names = models_config_dict[model]
     features = concat_features(feature_names, annotations_path)
     center = False
     before = False  
     ## If both false then future only
 
+    mask_path  = None
     
     if trials > 1:
         window = np.ones(trials) / trials  # Define the averaging window
@@ -77,14 +94,19 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
 
 
     
-    num_features = len(feature_names)
+    
     X = normalize(features, axis=0).astype(np.float32)
 
 
-    ##Hemodynamic lag correction delete in case of sherlock (corrected in the data)
-    #hrf_shift = 4
-    #X = np.roll(X, hrf_shift, axis=0)
-    #X[:hrf_shift, :] = 0
+    ### Talk with Idan about this
+    ## To account for hrf
+    lags = [0]
+    X_lagged = create_lagged_features(X, lags=lags)
+    num_features = len(lags) * len(feature_names)
+
+    
+    # Normalize again if needed
+    X = normalize(X_lagged, axis=0).astype(np.float32)
 
 
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
@@ -92,7 +114,7 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
     
     for subj in range(1, num_subjects + 1):
         print(f'Processing subject: {subj}')
-        save_dir = os.path.join(results_dir, f'sub{subj}/{model}/trial_{trials}/')
+        save_dir = os.path.join(results_dir, model, f"trial_{trial}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
         
         fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
@@ -131,8 +153,8 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         r_nifti[masked_indices[0], masked_indices[1], masked_indices[2]] = r
         r_per_feature_nifti[:, masked_indices[0], masked_indices[1], masked_indices[2]] = r_per_feature
         
-        if trials <= 1:
-            save_as_nii(model, subj, r_nifti, r_per_feature_nifti, save_dir, feature_names, img_affine)
+        
+        save_as_nii(model, subj, r_nifti, r_per_feature_nifti, save_dir, feature_names, img_affine)
         
         r_nifti_group[subj - 1] = r_nifti
         r_per_feature_nifti_group[subj - 1] = r_per_feature_nifti
@@ -140,7 +162,7 @@ def main(data_path, annotations_path, mask_path, model, results_dir, original_da
         print(f'Subject {subj} done. Max r: {np.max(r_nifti[~np.isnan(r_nifti)])}')
     
     # Save group results
-    group_dir = os.path.join(results_dir, f'group/{model}/trial_{trials}/')
+    group_dir = os.path.join(results_dir, model, f"trial_{trial}", "group")
     os.makedirs(group_dir, exist_ok=True)
     r_mean = np.mean(r_nifti_group, axis=0)
     weight_mean = np.mean(r_per_feature_nifti_group, axis=0)
@@ -158,11 +180,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model", 'llava_1TR_video',
+        "--model",  'llava_1TR_onlysocial', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_video_TRrange_onlysocial_FFA',
-        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_onlysocial',
+        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ppa_mask.nii",
         "--trials", "1"
     ])
     
@@ -173,14 +195,17 @@ if __name__ == '__main__':
     original_data_shape = [61, 73, 61]
     #original_data_shape = [64, 76, 64]
     num_subjects = 17
-    for trial in range(1, args.trials+1):
-        main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, args.model, args.results_dir, 
+    means = []
+    stds = []
+
+    for trial in [1,9]:
+        main(args.fmri_data_path, args.annotations_path, args.isc_mask_path ,args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
     
-    for i in range (1,10):
-        model = f'llava_{i}TR_video'
-        main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
-             original_data_shape, num_subjects, alphas, i)
+   # for i in range (1,21):
+    #    model = f'llava_{i}TR_onlysocial'
+     #   main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
+      #       original_data_shape, num_subjects, alphas, i)
     
     duration = round((time.time() - start_time) / 60)
     print(f'Duration: {duration} mins')

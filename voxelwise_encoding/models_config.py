@@ -2,7 +2,7 @@ import numpy as np
 
 models_config_dict = {
     'full': ['amplitude', 'arousal', 'AverME', 'face', 'hue', 'indoor_outdoor', 'mentalization', 'music', 'pitchHz', 'pixel', 'saturation', 'social_nonsocial', 'speaking', 'touch', 'valence', 'written_text'],
-    'social': ['social_nonsocial'],
+    'social': ['social_nonsocial'],'indoor' : ['indoor_outdoor_llava'],
     'social_plus_llava': ['arousal', 'mentalization', 'speaking', 'social_nonsocial', 'valence', 'llava_face', 'llava_social', 'llava_touch'],
     'llava_features': ['llava_face', 'llava_social', 'llava_touch'],
     ## This is the correct annotation for the llava social features
@@ -12,7 +12,9 @@ models_config_dict = {
     'llava_6TR_onlysocial' : ['llava_pics_social_non_social(TR6)'],'llava_7TR_onlysocial' : ['llava_pics_social_non_social(TR7)'],
     'llava_8TR_onlysocial' : ['llava_pics_social_non_social(TR8)'],'llava_9TR_onlysocial' : ['llava_pics_social_non_social(TR9)'],
     'llava_10TR_onlysocial' : ['llava_pics_social_non_social(TR10)'],'llava_11TR_onlysocial' : ['llava_pics_social_non_social(TR11)'],
-    'llava_12TR_onlysocial' : ['llava_pics_social_non_social(TR12)'],'llava_13TR_onlysocial' : ['llava_pics_social_non_social(TR13)'],'llava_14TR_onlysocial' : ['llava_pics_social_non_social(TR14)'],
+    'llava_12TR_onlysocial' : ['llava_pics_social_non_social(TR12)'],'llava_13TR_onlysocial' : ['llava_pics_social_non_social(TR13)'],'llava_14TR_onlysocial' : ['llava_pics_social_non_social(TR14)'],"llava_15TR_onlysocial" : ['llava_pics_social_non_social(TR15)'],
+    'llava_16TR_onlysocial' : ['llava_pics_social_non_social(TR16)'],'llava_17TR_onlysocial' : ['llava_pics_social_non_social(TR17)'], 'llava_18TR_onlysocial' : ['llava_pics_social_non_social(TR18)'],
+    'llava_19TR_onlysocial' : ['llava_pics_social_non_social(TR19)'],'llava_20TR_onlysocial' : ['llava_pics_social_non_social(TR20)'],
     'llava_1TR_video' : ["llava_1.5s_video_new"],'llava_2TR_video' :["llava_3.0s_video"], "llava_3TR_video":["llava_4.5s_video"], "llava_4TR_video":["llava_6.0s_video"],
     'llava_5TR_video' :["llava_7.5s_video"],'llava_6TR_video' :["llava_9.0s_video"],'llava_7TR_video' :["llava_10.5s_video"],
     'llava_8TR_video' :["llava_12.0s_video"],'llava_9TR_video' :["llava_13.5s_video"],

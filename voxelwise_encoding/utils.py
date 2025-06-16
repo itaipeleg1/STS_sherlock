@@ -10,6 +10,7 @@ def clean_image(fmri_path, subj, mask, results_dir):
     clean the data (remove NaN, Inf, columns with constant values), save the nii file.
     """
     subj_results_dir = os.path.join(results_dir, f'sub{subj}')
+    os.makedirs(subj_results_dir, exist_ok=True)
     npy_path = os.path.join(subj_results_dir, f'fmri_s{subj}.npy')
     masked_indices_path = os.path.join(subj_results_dir, f'masked_indices_s{subj}.npy')
     original_data_shape_path = os.path.join(subj_results_dir, f'original_data_shape_s{subj}.npy')
