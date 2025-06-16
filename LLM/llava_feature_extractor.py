@@ -24,7 +24,7 @@ def extract_frame_number(filepath):
     except (ValueError, IndexError):
         return -1
 
-def analyze_frames(root_dir, pipe,tr_ref, 
+def analyze_frames(root_dir,model,processor,tr_ref, 
                   samples_per_seq=13,
                   seq_prefix='TR',
                   seq_range=None,  
@@ -33,12 +33,7 @@ def analyze_frames(root_dir, pipe,tr_ref,
                   save_interval=50,
                     ):
     
-    #if prompts is None:
-     #   prompts = [
-      #      ('social', "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"),
-       #     ('speak', "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answer in 1 word - yes or no.\nASSISTANT:"),
-        #    ('gaze', "USER: <image>\nIs the person's gaze directed towards someone off-screen? Answer in 1 word - yes or no.\nASSISTANT:")
-        #]
+
     samples_per_seq = samples_per_seq*tr_ref
     # Get all TR directories
     seq_dirs = [d for d in os.listdir(root_dir) 
@@ -80,55 +75,94 @@ def analyze_frames(root_dir, pipe,tr_ref,
         social_count = 0
         gaze_count = 0
         speak_count= 0
+        object_count = 0
         samples_processed = len(sampled_frames)
         final=0
         
         # Figure out a general use of the prompts
         for path in sampled_frames:
+            prompt1 = f"USER: <image>\nIs there a human face visible in this image? Respond only with 'yes' or 'no'.\nASSISTANT:"
             image = Image.open(path)
-            
-            prompt1 = "USER: <image>\nDoes this image contain social interaction between people? Answer in 1 word - yes or no..\nASSISTANT:"
-            outputs1 = pipe(image, prompt=prompt1, generate_kwargs={"max_new_tokens": 200})
-            response1 = outputs1[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-            prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
-            outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
-            response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-            prompt3 = "USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer in 1 word - yes or no.\nASSISTANT:"
-            outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
-            response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+            inputs = processor(images=image, text=prompt1, return_tensors="pt").to(model.device)
 
-            if "yes" in response1:
-               social_count += 1
-            if "yes" in response2:
-               speak_count += 1
-            if "yes" in response3:
-               gaze_count += 1
+            # Generate with logits returned
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=20,
+                    return_dict_in_generate=True,
+                    output_scores=True, temperature=0
+                )
+
+            # Decode text
+            generated_text = processor.batch_decode(outputs.sequences, skip_special_tokens=True)[0]
+            response1 = generated_text.split("ASSISTANT:")[-1].strip().lower()
+            tokenizer = processor.tokenizer
+                        
+            # Get logits of first generated token
+            logits_tensor = outputs.scores[-2].squeeze()  # last score is for first new token
+            probs = torch.softmax(logits_tensor, dim=-1)
+
+            # Get correct token id
+                # Score both 'yes' and 'Yes'
+            yes_token_lower = tokenizer.tokenize("yes")[0]
+            yes_token_upper = tokenizer.tokenize("Yes")[0]
+            yes_id_lower = tokenizer.convert_tokens_to_ids(yes_token_lower)
+            yes_id_upper = tokenizer.convert_tokens_to_ids(yes_token_upper)
+
+            yes_prob = probs[yes_id_lower].item() + probs[yes_id_upper].item()
+            print(f"Prob for 'Yes': {yes_prob:.4f} image: {path} | Response: {response1}")
+            print(f"Response: {response1}")
+            if yes_prob > 0.8:
+                social_count += 1
+
+            
+            #outputs1 = pipe(image, prompt=prompt1, generate_kwargs={"max_new_tokens": 200})
+            #response1 = outputs1[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+           # prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
+           # outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
+           # response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+           # prompt3 = "USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer in 1 word - yes or no.\nASSISTANT:"
+           # outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
+           # response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+           # prompt4 = "USER: <image>\nIs there a person that uses with an object? Answer in 1 word - yes or no.\nASSISTANT:"
+           # outputs4 = pipe(image, prompt=prompt4, generate_kwargs={"max_new_tokens": 200})
+           # response4 = outputs4[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
+            #if "yes" in response2:
+             #  speak_count += 1
+            #if "yes" in response3:
+             #  gaze_count += 1
+            #if "yes" in response4:
+             #   object_count += 1
 
         threshold = 0.5
         # Binary decision based on majority vote
-        gaze = 1 if gaze_count > threshold*samples_processed else 0
+       # gaze = 1 if gaze_count > threshold*samples_processed else 0
         social= 1 if social_count > threshold*samples_processed else 0
-        speak = 1 if speak_count > threshold*samples_processed else 0
-        if social ==1:
+       # speak = 1 if speak_count > threshold*samples_processed else 0
+       # object_c= 1 if object_count > threshold*samples_processed else 0
+        if social ==1: 
             final = 1
         #elif speak==1 and gaze==1:
+        
          #   final = 1
         else:
             final = 0
-
-        results.append([group_label, social,  speak, gaze, final,samples_processed])
+        
+        results.append([group_label, social,  final,samples_processed])
         print(f"TR{group_label}: {social} ({social_count}/{samples_processed} sampled frames)")
+        print(response1)
         
         # Save intermediate results
         if len(results) % save_interval == 0:
             
-            results_df = pd.DataFrame(results,columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed'])
+            results_df = pd.DataFrame(results,columns=['TR', 'social',"final" ,'samples_processed'])
             results_df.to_csv(output_path, index=False)
             print(f"\nIntermediate results saved to {output_path}")
 
         i += tr_ref #  no overlap between groups
 
-    results_df = pd.DataFrame(results, columns=['TR', 'social',"speak", "gaze","final" ,'samples_processed']) ##for this case
+    results_df = pd.DataFrame(results, columns=['TR', 'social',"final" ,'samples_processed']) ##for this case
     annotation = results_df["final"]
     annotation = np.array(annotation)
     ## duplicate the annotation
@@ -145,10 +179,10 @@ def analyze_frames(root_dir, pipe,tr_ref,
     annotation = np.concatenate([t1,anima,t2])
     annotation = annotation[:1976]
     annotation = np.reshape(annotation, (-1, 1))
-    np.save(os.path.join(root_dir, f'llava_pics_social_non_social(TR{tr_ref}).npy'), annotation)
+    np.save(os.path.join(root_dir, f'llava_pics_face(TR{tr_ref}).npy'), annotation)
     results_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
-    print(f"\nNumpy of annotation is saved to {os.path.join(root_dir, f'llava_pics_social_non_social(TR{tr_ref}).npy')} with shape {annotation.shape}")
+    print(f"\nNumpy of annotation is saved to {os.path.join(output_path, f'llava_pics_face(TR{tr_ref})2.npy')} with shape {annotation.shape}")
     return results_df
 
 
@@ -159,9 +193,9 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str, required=True, help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
+    parser.add_argument('--end_seq', type=int, default=1950, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=13, help='Number of frames to sample per sequence')
-    parser.add_argument('--tr_ref', type=int, help='How big is the reference TR')
+    parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
     
     args = parser.parse_args()
@@ -174,18 +208,21 @@ if __name__ == "__main__":
         )
     
     model_id = "llava-hf/llava-1.5-7b-hf"
-    pipe = pipeline("image-to-text", model=model_id, model_kwargs={"quantization_config": quantization_config})
+    processor = AutoProcessor.from_pretrained(model_id)
+    model = AutoModelForVision2Seq.from_pretrained(model_id, quantization_config=quantization_config, device_map="auto")
+    model.eval()
     custom_prompts = []  ## Should be available in the future
-    for tr_ref in range(13,23):
+    for tr_ref in range(1):
         print(f"Processing TR reference: {tr_ref}")
         # Run analysis
-        output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_pics_{tr_ref}TR.csv"
+        output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_face_pics_{tr_ref}TR2.csv"
         results_df = analyze_frames(
-            root_dir=args.TR_root,
-            pipe=pipe,  
+            root_dir="/home/new_storage/sherlock/data/frames",
+            model=model,
+            processor=processor,
+            tr_ref=1,  # Adjust for 0-based index
             seq_range=(args.start_seq, args.end_seq),
             output_path=output,
             samples_per_seq=args.samples_per_seq,
-            tr_ref=tr_ref,
             save_interval=args.save_interval,
         )
