@@ -78,12 +78,15 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         object_count = 0
         samples_processed = len(sampled_frames)
         final=0
-        
-        # Figure out a general use of the prompts
-        for path in sampled_frames:
-            prompt1 = f"USER: <image>\nIs there a human face visible in this image? Respond only with 'yes' or 'no'.\nASSISTANT:"
-            image = Image.open(path)
-            inputs = processor(images=image, text=prompt1, return_tensors="pt").to(model.device)
+        ## I need to figure out how to use prompts in a general way
+        BATCHSIZE = 16
+        prompt1 = f"USER: <image>\nIs there a human face visible in this image? Respond only with 'yes' or 'no'.\nASSISTANT:"
+        for batch_start in range(0, len(sampled_frames), BATCHSIZE):
+            batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
+            images = [Image.open(path).convert("RGB") for path in batch_paths]
+            prompts = [prompt1] * len(images)  # Repeat prompt for each image in batch
+
+            inputs = processor(images=images, text=prompts, return_tensors="pt").to(model.device)
 
             # Generate with logits returned
             with torch.no_grad():
@@ -93,28 +96,28 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     return_dict_in_generate=True,
                     output_scores=True, temperature=0
                 )
-
-            # Decode text
-            generated_text = processor.batch_decode(outputs.sequences, skip_special_tokens=True)[0]
-            response1 = generated_text.split("ASSISTANT:")[-1].strip().lower()
             tokenizer = processor.tokenizer
-                        
+            logits_tensor = outputs.scores[-2] ## size of  logits is (batch_size, vocab_size)
+            generated_text = processor.batch_decode(outputs.sequences, skip_special_tokens=True)
+            for l, path in enumerate(batch_paths):
+                
+                response1 = generated_text[l].split("ASSISTANT:")[-1].strip().lower()
             # Get logits of first generated token
-            logits_tensor = outputs.scores[-2].squeeze()  # last score is for first new token
-            probs = torch.softmax(logits_tensor, dim=-1)
+                
+                probs = torch.softmax(logits_tensor[l], dim=-1)
 
-            # Get correct token id
-                # Score both 'yes' and 'Yes'
-            yes_token_lower = tokenizer.tokenize("yes")[0]
-            yes_token_upper = tokenizer.tokenize("Yes")[0]
-            yes_id_lower = tokenizer.convert_tokens_to_ids(yes_token_lower)
-            yes_id_upper = tokenizer.convert_tokens_to_ids(yes_token_upper)
+                # Get correct token id
+                    # Score both 'yes' and 'Yes'
+                yes_token_lower = tokenizer.tokenize("yes")[0]
+                yes_token_upper = tokenizer.tokenize("Yes")[0]
+                yes_id_lower = tokenizer.convert_tokens_to_ids(yes_token_lower)
+                yes_id_upper = tokenizer.convert_tokens_to_ids(yes_token_upper)
 
-            yes_prob = probs[yes_id_lower].item() + probs[yes_id_upper].item()
-            print(f"Prob for 'Yes': {yes_prob:.4f} image: {path} | Response: {response1}")
-            print(f"Response: {response1}")
-            if yes_prob > 0.8:
-                social_count += 1
+                yes_prob = probs[yes_id_lower].item() + probs[yes_id_upper].item()
+                print(f"Prob for 'Yes': {yes_prob:.4f} image: {path} | Response: {response1}")
+                print(f"Response: {response1}")
+                if yes_prob > 0.8:
+                    social_count += 1
 
             
             #outputs1 = pipe(image, prompt=prompt1, generate_kwargs={"max_new_tokens": 200})
@@ -151,7 +154,6 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         
         results.append([group_label, social,  final,samples_processed])
         print(f"TR{group_label}: {social} ({social_count}/{samples_processed} sampled frames)")
-        print(response1)
         
         # Save intermediate results
         if len(results) % save_interval == 0:
@@ -212,15 +214,15 @@ if __name__ == "__main__":
     model = AutoModelForVision2Seq.from_pretrained(model_id, quantization_config=quantization_config, device_map="auto")
     model.eval()
     custom_prompts = []  ## Should be available in the future
-    for tr_ref in range(1):
-        print(f"Processing TR reference: {tr_ref}")
+
+
         # Run analysis
-        output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_face_pics_{tr_ref}TR2.csv"
-        results_df = analyze_frames(
+    output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_face_pics_{1}TR2.csv"
+    results_df = analyze_frames(
             root_dir="/home/new_storage/sherlock/data/frames",
             model=model,
             processor=processor,
-            tr_ref=1,  # Adjust for 0-based index
+            tr_ref=1, 
             seq_range=(args.start_seq, args.end_seq),
             output_path=output,
             samples_per_seq=args.samples_per_seq,

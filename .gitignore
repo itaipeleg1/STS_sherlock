@@ -14,7 +14,7 @@
 *.mkv
 *.jpg
 *.png
-
+*.pdf
 # Output and cache
 __pycache__/
 *.log
