@@ -1,3 +1,4 @@
+
 import os
 ## Set environment variables for Hugging Face cache
 ## This is to avoid running out of space in the default cache location
@@ -92,15 +93,17 @@ def analyze_frames(root_dir,model,processor,tr_ref,
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=20,
+                    max_new_tokens=1,
                     return_dict_in_generate=True,
                     output_scores=True, temperature=0
                 )
             tokenizer = processor.tokenizer
-            logits_tensor = outputs.scores[-2] ## size of  logits is (batch_size, vocab_size)
+
+            logits_tensor = outputs.scores[0] ## size of  logits is (batch_size, vocab_size)
             generated_text = processor.batch_decode(outputs.sequences, skip_special_tokens=True)
             for l, path in enumerate(batch_paths):
-                
+
+
                 response1 = generated_text[l].split("ASSISTANT:")[-1].strip().lower()
             # Get logits of first generated token
                 
@@ -116,7 +119,7 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                 yes_prob = probs[yes_id_lower].item() + probs[yes_id_upper].item()
                 print(f"Prob for 'Yes': {yes_prob:.4f} image: {path} | Response: {response1}")
                 print(f"Response: {response1}")
-                if yes_prob > 0.8:
+                if response1=="yes" and yes_prob > 0.8:
                     social_count += 1
 
             
