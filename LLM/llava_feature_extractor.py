@@ -80,8 +80,8 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         samples_processed = len(sampled_frames)
         final=0
         ## I need to figure out how to use prompts in a general way
-        BATCHSIZE = 16
-        prompt1 = f"USER: <image>\nIs there a human face visible in this image? Respond only with 'yes' or 'no'.\nASSISTANT:"
+        BATCHSIZE = 13
+        prompt1 = f"USER: <image>\nIs there a human face visible in this frame? Respond only with 'yes' or 'no'.\nASSISTANT:"
         for batch_start in range(0, len(sampled_frames), BATCHSIZE):
             batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
             images = [Image.open(path).convert("RGB") for path in batch_paths]
@@ -98,7 +98,8 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     output_scores=True, temperature=0
                 )
             tokenizer = processor.tokenizer
-
+            yes_prob_agg = 0.0
+            no_prob_agg = 0.0
             logits_tensor = outputs.scores[0] ## size of  logits is (batch_size, vocab_size)
             generated_text = processor.batch_decode(outputs.sequences, skip_special_tokens=True)
             for l, path in enumerate(batch_paths):
@@ -113,34 +114,21 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     # Score both 'yes' and 'Yes'
                 yes_token_lower = tokenizer.tokenize("yes")[0]
                 yes_token_upper = tokenizer.tokenize("Yes")[0]
+                no_token_lower = tokenizer.tokenize("no")[0]
+                no_token_upper = tokenizer.tokenize("No")[0]
                 yes_id_lower = tokenizer.convert_tokens_to_ids(yes_token_lower)
                 yes_id_upper = tokenizer.convert_tokens_to_ids(yes_token_upper)
+                no_id_lower = tokenizer.convert_tokens_to_ids(no_token_lower)
+                no_id_upper = tokenizer.convert_tokens_to_ids(no_token_upper)
 
                 yes_prob = probs[yes_id_lower].item() + probs[yes_id_upper].item()
+                no_prob = probs[no_id_lower].item() + probs[no_id_upper].item()
                 print(f"Prob for 'Yes': {yes_prob:.4f} image: {path} | Response: {response1}")
                 print(f"Response: {response1}")
-                if response1=="yes" and yes_prob > 0.8:
-                    social_count += 1
-
-            
-            #outputs1 = pipe(image, prompt=prompt1, generate_kwargs={"max_new_tokens": 200})
-            #response1 = outputs1[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-           # prompt2 = "USER: <image>\nIs there a person speaking in this image(Lips moving)? Answear in 1 word - yes or no.\nASSISTANT:"
-           # outputs2 = pipe(image, prompt=prompt2, generate_kwargs={"max_new_tokens": 200})
-           # response2 = outputs2[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-           # prompt3 = "USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer in 1 word - yes or no.\nASSISTANT:"
-           # outputs3 = pipe(image, prompt=prompt3, generate_kwargs={"max_new_tokens": 200})
-           # response3 = outputs3[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-           # prompt4 = "USER: <image>\nIs there a person that uses with an object? Answer in 1 word - yes or no.\nASSISTANT:"
-           # outputs4 = pipe(image, prompt=prompt4, generate_kwargs={"max_new_tokens": 200})
-           # response4 = outputs4[0]["generated_text"].split("ASSISTANT:")[-1].strip().lower()
-            #if "yes" in response2:
-             #  speak_count += 1
-            #if "yes" in response3:
-             #  gaze_count += 1
-            #if "yes" in response4:
-             #   object_count += 1
-
+                yes_prob_agg += yes_prob
+                no_prob_agg += no_prob
+                #if  yes_prob > 0.4:
+                 #   social_count += 1
         threshold = 0.5
         # Binary decision based on majority vote
        # gaze = 1 if gaze_count > threshold*samples_processed else 0
@@ -154,41 +142,44 @@ def analyze_frames(root_dir,model,processor,tr_ref,
          #   final = 1
         else:
             final = 0
-        
-        results.append([group_label, social,  final,samples_processed])
+        ## Fixing for probs aggregation
+        yes_prob_agg /= samples_processed
+        no_prob_agg /= samples_processed
+        results.append([group_label, yes_prob_agg, yes_prob_agg - no_prob_agg, samples_processed])
+       # results.append([group_label, social,  final,samples_processed])
         print(f"TR{group_label}: {social} ({social_count}/{samples_processed} sampled frames)")
         
         # Save intermediate results
         if len(results) % save_interval == 0:
             
-            results_df = pd.DataFrame(results,columns=['TR', 'social',"final" ,'samples_processed'])
+            results_df = pd.DataFrame(results,columns=['TR', 'Probabillity for yes',"Probabillity for yes minus no" ,'samples_processed'])
             results_df.to_csv(output_path, index=False)
             print(f"\nIntermediate results saved to {output_path}")
-
+        
         i += tr_ref #  no overlap between groups
 
-    results_df = pd.DataFrame(results, columns=['TR', 'social',"final" ,'samples_processed']) ##for this case
-    annotation = results_df["final"]
-    annotation = np.array(annotation)
+    results_df = pd.DataFrame(results, columns=['TR', 'Probabillity for yes',"Probabillity for yes minus no" ,'samples_processed']) ##for this case
+    #annotation = results_df["final"]
+    #annotation = np.array(annotation)
     ## duplicate the annotation
-    annotation = np.repeat(annotation, tr_ref)
+    #annotation = np.repeat(annotation, tr_ref)
 
     ## add the aniamtion "let's all go to the movies" and save the annotation array
     ## 27 TR sequences
-    orig = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/social_nonsocial.npy")
-    orig = orig.flatten()
-    anima = orig[:27]
-    annotation = np.concatenate((anima,annotation), axis=0)
-    t1 = annotation[:946]
-    t2 = annotation[946:]
-    annotation = np.concatenate([t1,anima,t2])
-    annotation = annotation[:1976]
-    annotation = np.reshape(annotation, (-1, 1))
-    np.save(os.path.join(root_dir, f'llava_pics_face(TR{tr_ref}).npy'), annotation)
-    results_df.to_csv(output_path, index=False)
-    print(f"\nFinal results saved to {output_path}")
-    print(f"\nNumpy of annotation is saved to {os.path.join(output_path, f'llava_pics_face(TR{tr_ref})2.npy')} with shape {annotation.shape}")
-    return results_df
+    #orig = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/social_nonsocial.npy")
+    #orig = orig.flatten()
+    #anima = orig[:27]
+    #annotation = np.concatenate((anima,annotation), axis=0)
+    #t1 = annotation[:946]
+    #t2 = annotation[946:]
+    #annotation = np.concatenate([t1,anima,t2])
+    #annotation = annotation[:1976]
+    #annotation = np.reshape(annotation, (-1, 1))
+    #np.save(os.path.join(root_dir, f'llava_pics_face(TR{tr_ref}).npy'), annotation)
+    #results_df.to_csv(output_path, index=False)
+    #print(f"\nFinal results saved to {output_path}")
+    #print(f"\nNumpy of annotation is saved to {os.path.join(output_path, f'llava_pics_face(TR{tr_ref})2.npy')} with shape {annotation.shape}")
+    #return results_df
 
 
 if __name__ == "__main__":
@@ -220,7 +211,7 @@ if __name__ == "__main__":
 
 
         # Run analysis
-    output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_face_pics_{1}TR2.csv"
+    output = f"/home/new_storage/sherlock/data/annotations_from_models/llava_face_pics_{1}TR_Onlylogits.csv"
     results_df = analyze_frames(
             root_dir="/home/new_storage/sherlock/data/frames",
             model=model,

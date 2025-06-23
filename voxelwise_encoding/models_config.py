@@ -19,7 +19,7 @@ models_config_dict = {
     'llava_5TR_video' :["llava_7.5s_video"],'llava_6TR_video' :["llava_9.0s_video"],'llava_7TR_video' :["llava_10.5s_video"],
     'llava_8TR_video' :["llava_12.0s_video"],'llava_9TR_video' :["llava_13.5s_video"],
       "llava_music":["social_speak_music"],
-     'llava_only_face': ['llava_face'],"cls":["cls"],
+     'llava_only_face': ['face_llava_prob(0.4)'],"cls":["cls"],
     'llava_only_face_filled': ['llava_face_filled'],
     "leyla_face": ['face'],
 }

@@ -180,11 +180,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'llava_1TR_onlysocial', 
+        "--model",  'llava_only_face', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_onlysocial',
-        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ppa_mask.nii",
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_face_STS',
+        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/sts_mask.nii",
         "--trials", "1"
     ])
     
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     means = []
     stds = []
 
-    for trial in [1,9]:
+    for trial in [1,20]:
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path ,args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
     
