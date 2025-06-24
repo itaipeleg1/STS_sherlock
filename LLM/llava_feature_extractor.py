@@ -81,7 +81,7 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         final=0
         ## I need to figure out how to use prompts in a general way
         BATCHSIZE = 13
-        prompt1 = f"USER: <image>\nIs there a human face visible in this frame? Respond only with 'yes' or 'no'.\nASSISTANT:"
+        prompt1 = f"USER: <image>\nIs there people in this image that appear to be engaging with each other socially (e.g., talking, making eye contact, or interacting)? Answer 'yes' or 'no'.\nASSISTANT:"
         for batch_start in range(0, len(sampled_frames), BATCHSIZE):
             batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
             images = [Image.open(path).convert("RGB") for path in batch_paths]
