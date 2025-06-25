@@ -21,6 +21,6 @@ models_config_dict = {
       "llava_music":["social_speak_music"],
      'llava_only_face': ['face_llava_prob(0.4)'], "cls":["cls"],
     'llava_only_face_filled': ['llava_face_filled'],
-    "leyla_face": ['face'],
+    "leyla_face": ['face'],"llava_logits": ['llava_social_logits']
 }
 

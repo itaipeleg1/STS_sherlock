@@ -180,11 +180,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'leyla_face', 
+        "--model",  'llava_logits', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/leyla_TRrange_face_lateral_occipital',
-        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/lateral_occipital_mask.nii",
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_social_logits_FFA',
+        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
         "--trials", "1"
     ])
     
