@@ -40,6 +40,7 @@ def extract_frames(video_path, output_dir, TR=1):
             frames_in_current_tr = 0
             print(f"TR transition at frame {frame_count}")
 
+
         if frame_count % 1000 == 0:
             print(f"Processed {frame_count} frames")
     cap.release()
