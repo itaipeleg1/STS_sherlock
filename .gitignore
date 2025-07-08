@@ -23,6 +23,7 @@ __pycache__/
 
 # Model results and folders
 results*/
+500days/data/fmri
 result_llava_socialspeak/
 result_llayla_social/
 frames/

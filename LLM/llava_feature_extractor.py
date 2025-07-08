@@ -108,10 +108,15 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     max_new_tokens=1,
                 )
 
-            generated_text1 = processor.batch_decode(outputs1.sequences, skip_special_tokens=True)
-            generated_text2 = processor.batch_decode(outputs2.sequences, skip_special_tokens=True)
-            generated_text3 = processor.batch_decode(outputs3.sequences, skip_special_tokens=True)
-
+            generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
+            generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
+            generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
+            generated_text1 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text1]
+            generated_text2 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text2]
+            generated_text3 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text3]
+            print(generated_text1)
+            print(generated_text2)
+            print(generated_text3)
             for text1, text2, text3 in zip(generated_text1, generated_text2, generated_text3):
                 # Process the generated text to determine the label
                 if "yes" in text1.lower():
@@ -128,10 +133,11 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         speak = 1 if speak_count > threshold*samples_processed else 0
         gaze = 1 if gaze_count > threshold*samples_processed else 0
         if social == 1:
-            if speak == 1 and gaze == 1:
-                   final = 1
-            else:
-                 final = 0
+            final = 1
+        elif speak == 1 and gaze == 1:
+            final = 1
+        else:
+            final = 0
 
         results.append([group_label, social,speak,gaze,final, samples_processed])
 
@@ -154,8 +160,8 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=1950, help='Ending sequence number')
-    parser.add_argument('--samples_per_seq', type=int, default=13, help='Number of frames to sample per sequence')
+    parser.add_argument('--end_seq', type=int, default=5471, help='Ending sequence number')
+    parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
     
@@ -176,7 +182,7 @@ if __name__ == "__main__":
 
 
         # Run analysis
-    output = f"/home/new_storage/sherlock/data/STS_sherlock/500days/annotations_from_models/llava_social_500days{1}TR.csv"
+    output = f"/home/new_storage/sherlock/STS_sherlock/500days/data/annotations_from_models/llava_social_500days{1}TR.csv"
     results_df = analyze_frames(
             root_dir="/home/new_storage/sherlock/STS_sherlock/500days/data/frames",
             model=model,
