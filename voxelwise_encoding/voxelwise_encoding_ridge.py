@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from sklearn.linear_model import RidgeCV
+from scipy.stats import zscore
 from sklearn.preprocessing import normalize
 from sklearn.model_selection import train_test_split
 import time
@@ -30,41 +31,6 @@ def create_lagged_features(X, lags=[0, 1, 2, 3, 4]):
             lagged[:lag, :] = 0  # Zero padding the beginning
             lagged_X.append(lagged)
     return np.hstack(lagged_X)
-
-def load_cls_matrix(embedding_folder, sort_by_index=True, return_indices=False):
-    """
-    Loads CLS embeddings saved as .pt files into a NumPy matrix.
-
-    Args:
-        embedding_folder (str or Path): Path to the folder with .pt embeddings.
-        sort_by_index (bool): Whether to sort files by numeric filename.
-        return_indices (bool): If True, also return the sorted list of indices.
-
-    Returns:
-        np.ndarray: Matrix of shape (n_segments, embed_dim)
-        list (optional): List of segment/frame indices
-    """
-    embedding_folder = Path(embedding_folder)
-    files = [f for f in embedding_folder.glob("*.pt")]
-
-    if sort_by_index:
-        files = sorted(files, key=lambda x: int(x.stem))
-
-    embeddings = []
-    indices = []
-
-    for f in files:
-        tensor = torch.load(f)
-        if tensor.dim() > 1:
-            tensor = tensor.view(-1)
-        embeddings.append(tensor.cpu().numpy())
-        indices.append(int(f.stem))
-
-    matrix = np.stack(embeddings)
-
-    if return_indices:
-        return matrix, indices
-    return matrix
 
 
 def concat_features(features_list, single_features_dir):
@@ -112,18 +78,26 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
     
-    for subj in range(1, num_subjects + 1):
+    for subj in range(18,19):
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trial}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
-        
-        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
+        if subj ==14 or subj == 16:
+            logging.warning(f'Skipping subject {subj} due to missing data.')
+            continue
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sub-{subj}_task-500daysofsummer_bold_no_blur_no_censor.nii.gz')
         #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
         data_clean = data_clean[:len(X)] ##making sure same dims
+        data_clean = data_clean[100:]
+        X=X[:len(data_clean)] ##making sure same dims
+        print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
+        data_clean = zscore(data_clean, axis=0) ## Z-score normalization for 500 days data!
+        data_clean = np.nan_to_num(data_clean, nan=0.0)  # Replace NaNs with 0 for 500 days
+
         X_train, X_test, y_train, y_test = train_test_split(X, data_clean.astype(np.float32), test_size=0.2, random_state=42)
         
         # Fit ridge regression
@@ -180,11 +154,10 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'llava_logits', 
-        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
-        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_TRrange_social_logits_FFA',
-        "--isc_mask_path", r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
+        "--model",  '500_face', 
+        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/500days/data/fmri",
+        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/500days/data/annotations_from_models',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/500days/data/results/llava_500days_social',
         "--trials", "1"
     ])
     
@@ -192,13 +165,13 @@ if __name__ == '__main__':
     print(f'Model type: {args.model}')
     
     alphas = np.logspace(1, 4, 10)
-    original_data_shape = [61, 73, 61]
-    #original_data_shape = [64, 76, 64]
-    num_subjects = 17
+    #original_data_shape = [61, 73, 61]
+    original_data_shape = [64, 76, 64]
+    num_subjects = 20
     means = []
     stds = []
-
-    for trial in range(1,21):
+    trials = [1 , 3 , 6, 9 , 12 , 15 , 18]
+    for trial in trials:
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path ,args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
     

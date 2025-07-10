@@ -26,6 +26,7 @@ def clean_image(fmri_path, subj, mask, results_dir):
         original_data, img_affine = load_fmri_data(fmri_path)
         original_data_shape = original_data.shape[:3]
         masked_data, mask_indices = apply_mask(original_data, mask)
+        print(f'original data shape: {original_data_shape}, masked data shape: {masked_data.shape}')
         # data_clean = remove_useless_data(masked_data)
         data_clean = masked_data
         data_clean = data_clean.T
