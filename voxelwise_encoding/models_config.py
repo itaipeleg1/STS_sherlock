@@ -4,7 +4,7 @@ models_config_dict = {
     'full': ['amplitude', 'arousal', 'AverME', 'face', 'hue', 'indoor_outdoor', 'mentalization', 'music', 'pitchHz', 'pixel', 'saturation', 'social_nonsocial', 'speaking', 'touch', 'valence', 'written_text'],
     'social': ['social_nonsocial'],'indoor' : ['indoor_outdoor_llava'],
     'social_plus_llava': ['arousal', 'mentalization', 'speaking', 'social_nonsocial', 'valence', 'llava_face', 'llava_social', 'llava_touch'],
-    'llava_features': ['llava_face', 'llava_social', 'llava_touch'],'500_face':["face"],'500_social':["llava_500days_social"],'500_social_speak-gaze':["llava_500days_social_gaze-speak"],
+    'llava_features': ['llava_face', 'llava_social', 'llava_touch'],'500_face':['arousal', 'mentalization', 'speaking', 'social_nonsocial', 'valence'],'500_social':["llava_500days_social"],'500_social_speak-gaze':["llava_500days_social_gaze-speak"],
     ## This is the correct annotation for the llava social features
     'llava_only_social': ['llava_social_speak_full'],'llava_video_3s':["llava_3s_video_results_primitives"],'llava_video_6s':["llava_6s_video_results_primitives"],
     "c4":["annotation_c4"], 'llava_1TR_onlysocial' : ['llava_pics_social_non_social(TR1)'],'llava_2TR_onlysocial' : ['llava_pics_social_non_social(TR2)'],

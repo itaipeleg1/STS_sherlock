@@ -10,7 +10,7 @@ import logging
 import sys
 from pathlib import Path
 from nilearn.glm.first_level import glover_hrf
-from utils import clean_image, save_group_nii, save_as_nii
+from utils import clean_image, save_group_nii, save_as_nii, compute_group_significant_map
 from models_config import models_config_dict
 import os
 import torch
@@ -39,6 +39,7 @@ def concat_features(features_list, single_features_dir):
 
 def main(data_path, annotations_path, mask_path , model, results_dir, original_data_shape, num_subjects, alphas, trials):
     feature_names = models_config_dict[model]
+
     features = concat_features(feature_names, annotations_path)
     center = False
     before = False  
@@ -66,11 +67,10 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
 
     ### Talk with Idan about this
     ## To account for hrf
-    lags = [0]
+    lags = [0]  # Define lags in TRs
     X_lagged = create_lagged_features(X, lags=lags)
     num_features = len(lags) * len(feature_names)
 
-    
     # Normalize again if needed
     X = normalize(X_lagged, axis=0).astype(np.float32)
 
@@ -78,25 +78,22 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
     
-    for subj in range(18,19):
+    for subj in range(1, num_subjects + 1):
         print(f'Processing subject: {subj}')
-        save_dir = os.path.join(results_dir, model, f"trial_{trial}", f"subject{subj}")
+        save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
         if subj ==14 or subj == 16:
             logging.warning(f'Skipping subject {subj} due to missing data.')
             continue
-        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sub-{subj}_task-500daysofsummer_bold_no_blur_no_censor.nii.gz')
-        #fmri_path = os.path.join(data_path, f'sub21/derivatives', f'sub-21_task-citizenfour_bold_blur_no_censor_ica.nii.gz')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sub-{subj}_task-500daysofsummer_bold_blur_censor_ica.nii.gz')
+        
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
-        data_clean = data_clean[:len(X)] ##making sure same dims
-        data_clean = data_clean[100:]
-        X=X[:len(data_clean)] ##making sure same dims
+        data_clean = data_clean[:len(X)]  # Ensure data_clean matches the length of X
         print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
-        data_clean = zscore(data_clean, axis=0) ## Z-score normalization for 500 days data!
-        data_clean = np.nan_to_num(data_clean, nan=0.0)  # Replace NaNs with 0 for 500 days
+
 
         X_train, X_test, y_train, y_test = train_test_split(X, data_clean.astype(np.float32), test_size=0.2, random_state=42)
         
@@ -110,7 +107,6 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         logging.info('Predicting and calculating correlation per voxel')
         y_pred = ridge_results.predict(X_test)
         r = np.array([np.corrcoef(y_test[:, i], y_pred[:, i])[0, 1] for i in range(y_test.shape[1])])
-        
         # Compute feature-wise weights
         logging.info('Calculating feature-wise weights')
         r_per_feature = np.zeros((num_features, y_test.shape[1]))
@@ -126,7 +122,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         
         r_nifti[masked_indices[0], masked_indices[1], masked_indices[2]] = r
         r_per_feature_nifti[:, masked_indices[0], masked_indices[1], masked_indices[2]] = r_per_feature
-        
+        print("Final r_nifti max:", np.max(r_nifti))
         
         save_as_nii(model, subj, r_nifti, r_per_feature_nifti, save_dir, feature_names, img_affine)
         
@@ -136,7 +132,13 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         print(f'Subject {subj} done. Max r: {np.max(r_nifti[~np.isnan(r_nifti)])}')
     
     # Save group results
-    group_dir = os.path.join(results_dir, model, f"trial_{trial}", "group")
+    group_dir = os.path.join(results_dir, model, f"trial_{trials}", "group")
+    rmap_paths = [
+     os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}", f"{model}_r_sub{subj}.nii")
+     for subj in range(1, num_subjects + 1)
+     if subj not in [14, 16]  # Also filter skipped subjects
+     ]
+    
     os.makedirs(group_dir, exist_ok=True)
     r_mean = np.mean(r_nifti_group, axis=0)
     weight_mean = np.mean(r_per_feature_nifti_group, axis=0)
@@ -154,10 +156,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  '500_face', 
+        "--model",  '500_social', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/500days/data/fmri",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/500days/data/annotations_from_models',
         '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/500days/data/results/llava_500days_social',
+        '--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/500days/data/isc_mask/isc_mask_new.nii',
         "--trials", "1"
     ])
     
@@ -167,10 +170,10 @@ if __name__ == '__main__':
     alphas = np.logspace(1, 4, 10)
     #original_data_shape = [61, 73, 61]
     original_data_shape = [64, 76, 64]
-    num_subjects = 20
+    num_subjects = 9
     means = []
     stds = []
-    trials = [1 , 3 , 6, 9 , 12 , 15 , 18]
+    trials = [1 ,3, 6, 9 , 12,15 , 20]
     for trial in trials:
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path ,args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)

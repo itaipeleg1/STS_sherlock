@@ -2,7 +2,10 @@ import os
 import numpy as np
 import nibabel as nib
 from nilearn import image
-
+from scipy.stats import ttest_1samp
+from statsmodels.stats.multitest import fdrcorrection
+from scipy.ndimage import label
+import os
 
 def clean_image(fmri_path, subj, mask, results_dir):
     """
@@ -27,7 +30,7 @@ def clean_image(fmri_path, subj, mask, results_dir):
         original_data_shape = original_data.shape[:3]
         masked_data, mask_indices = apply_mask(original_data, mask)
         print(f'original data shape: {original_data_shape}, masked data shape: {masked_data.shape}')
-        # data_clean = remove_useless_data(masked_data)
+
         data_clean = masked_data
         data_clean = data_clean.T
         np.save(npy_path, data_clean)
@@ -92,3 +95,51 @@ def save_group_nii(model, r_mean, weight_mean, savedir, name_feature, img_affine
 def save_nifti(data, filename, affine=None):
     nifti_img = nib.Nifti1Image(data, affine)
     nib.save(nifti_img, filename)
+
+
+## added this to try mimic article
+
+def compute_group_significant_map(rmap_paths, output_path, alpha=0.05, min_cluster_size=10):
+    """
+    Compute group-level significance mask for r-maps (e.g. social model) across subjects.
+
+    Parameters:
+        rmap_paths (list of str): List of file paths to subject r-maps (NIfTI)
+        output_path (str): Path to save thresholded mean NIfTI map
+        alpha (float): FDR threshold
+        min_cluster_size (int): Minimum voxel cluster size to keep
+    """
+    print("Loading subject r-maps...")
+    data_list = [nib.load(p).get_fdata() for p in rmap_paths]
+    affine = nib.load(rmap_paths[0]).affine
+
+    data_stack = np.stack(data_list, axis=-1)  # shape: (X, Y, Z, N)
+    print(f"Data shape: {data_stack.shape}")
+
+    # t-test against 0
+    tvals, pvals = ttest_1samp(data_stack, popmean=0, axis=-1, nan_policy='omit')
+
+    # FDR correction (flatten, correct, reshape)
+    pvals_flat = pvals.reshape(-1)
+    reject, pvals_fdr = fdrcorrection(pvals_flat, alpha=alpha)
+    reject_mask = reject.reshape(pvals.shape)
+
+    print(f"Significant voxels (FDR<{alpha}): {np.sum(reject_mask)}")
+
+    # Compute mean r-values over subjects
+    mean_r = np.nanmean(data_stack, axis=-1)
+    mean_r_sig = mean_r * reject_mask  # zero out non-significant
+
+    # Optional: cluster size filtering
+    if min_cluster_size > 0:
+        labeled_array, num_features = label(mean_r_sig > 0)
+        for cluster_id in range(1, num_features + 1):
+            cluster_size = np.sum(labeled_array == cluster_id)
+            if cluster_size < min_cluster_size:
+                mean_r_sig[labeled_array == cluster_id] = 0
+        print(f"Clusters retained after min size {min_cluster_size}: {np.max(labeled_array)}")
+
+    # Save to NIfTI
+    img = nib.Nifti1Image(mean_r_sig, affine)
+    nib.save(img, output_path)
+    print(f"Saved thresholded group map to {output_path}")
