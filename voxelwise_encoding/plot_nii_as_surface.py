@@ -14,11 +14,11 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str
     img = nib.Nifti1Image(data, affine=nii.affine)
 
     plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}, max r: {np.max(data)}',
-                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/500days/500_social_group_r-1.html")
+                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/lateral_occipital - mask.html")
 
 
 
-path = r"/home/new_storage/sherlock/STS_sherlock/500days/data/results/llava_500days_social/500_social/trial_1/group/500_social_r.nii"
+path = r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/lateral_occipital_mask.nii"
 
-plot_voxelwise_encoding_results_on_surface(path, model='500_social_group_r-1', feature='llava')
+plot_voxelwise_encoding_results_on_surface(path, model='LO - mask', feature='llava')
 

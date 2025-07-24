@@ -160,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=5471, help='Ending sequence number')
+    parser.add_argument('--end_seq', type=int, default=5469, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
