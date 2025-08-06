@@ -12,13 +12,12 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str
     #threshold = np.percentile(data[data > 0], 90)
     data[data < 0] = 0
     img = nib.Nifti1Image(data, affine=nii.affine)
-
     plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}, max r: {np.max(data)}',
-                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/lateral_occipital - mask.html")
+                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_lateral_occipital.html")
 
 
 
-path = r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/lateral_occipital_mask.nii"
+path = r"/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_whole/cls/trial_1/group/cls_mat_pca.nii"
 
-plot_voxelwise_encoding_results_on_surface(path, model='LO - mask', feature='llava')
+plot_voxelwise_encoding_results_on_surface(path, model='ffa- mask', feature='llava')
 

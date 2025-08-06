@@ -49,8 +49,10 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                    if start <= int(d[len(seq_prefix):]) <= end]
     
     results = []
+    
     i = 0
     while i <= len(seq_dirs)-tr_ref:
+        language_latent = []
         group_dirs = seq_dirs[i:i+tr_ref]
         group_nums = [int(d[len(seq_prefix):]) for d in group_dirs]
         group_label = f"{group_nums[0]:04d}_{group_nums[-1]:04d}"
@@ -81,7 +83,7 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         final=0
         ## I need to figure out how to use prompts in a general way
         BATCHSIZE = 8
-        prompt1 = f"USER: <image>\nIs there people in this image that appear to be engaging with each other socially (e.g., talking, making eye contact, or interacting)? Answer 'yes' or 'no'.\nASSISTANT:"
+        prompt1 = f"USER: <image>\nIs there a face appearing in this image? Answer 'yes' or 'no'.\nASSISTANT:"
         prompt2 = f"USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer 'yes' or 'no'.\nASSISTANT:"
         prompt3 = f"USER: <image>\nIs there a person in this image who appears to be speaking or making a gesture that suggests communication? Answer 'yes' or 'no'.\nASSISTANT:"
         for batch_start in range(0, len(sampled_frames), BATCHSIZE):
@@ -107,7 +109,19 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     **inputs3,
                     max_new_tokens=1,
                 )
+                outputs =model(
+                    **inputs1,
+                    return_dict=True,
+                    output_hidden_states=True,
+                )
 
+            cls_embeddings = outputs.hidden_states[-1]
+            cls_embeddings = cls_embeddings[:, -1, :]  # Get CLS token embeddings
+            print("[DEBUG] CLS batch std:", cls_embeddings.std().item())
+            print("DEBUG: Shape of cls_embeddings:", cls_embeddings.shape)
+
+            for cls in cls_embeddings:
+                language_latent.append(cls.cpu().numpy())
             generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
             generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
             generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
@@ -125,8 +139,12 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                     gaze_count += 1
                 if "yes" in text3.lower():
                     speak_count += 1
-                
-        print(f"TR{group_label}:  Social: {social_count}, Gaze: {gaze_count}, Speak: {speak_count}")
+        if language_latent:
+
+            avg = np.mean(np.stack(language_latent), axis=0)
+            print(f"[DEBUG] Saving latent for group {group_label}, mean: {avg.mean():.4f}, std: {avg.std():.4f}")
+            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS/{group_label}_latent.npy", avg)
+        print(f"TR{group_label.split('.csv')[0]}:  Social: {social_count}, Gaze: {gaze_count}, Speak: {speak_count}")
 
         threshold = 0.5
         social= 1 if social_count > threshold*samples_processed else 0
@@ -146,12 +164,21 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         if len(results) % save_interval == 0:
             
             results_df = pd.DataFrame(results,columns=['TR', 'social', 'speak', 'gaze', 'final', 'samples_processed'])
-            results_df.to_csv(output_path, index=False)
+           # results_df.to_csv(output_path, index=False)
             print(f"\nIntermediate results saved to {output_path}")
         
         i += tr_ref #  no overlap between groups
 
     results_df = pd.DataFrame(results,columns=['TR', 'social', 'speak', 'gaze', 'final', 'samples_processed'])
+    #results_df.to_csv(output_path, index=False)
+    print(f"\nFinal results saved to {output_path}")
+
+    ## Save the social column as numpy
+    annotation = results_df['social'].values
+    annotation = np.reshape(annotation, (-1, 1)) ## make it 2D (n_samples, 1)
+    output_np = output_path.split('.csv')[0] + '.npy'
+   # np.save(output_np, annotation)
+
 
 if __name__ == "__main__":
 
@@ -160,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=5469, help='Ending sequence number')
+    parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
@@ -176,15 +203,16 @@ if __name__ == "__main__":
     
     model_id = "llava-hf/llava-1.5-7b-hf"
     processor = AutoProcessor.from_pretrained(model_id)
+    tokenizer = processor.tokenizer
     model = AutoModelForVision2Seq.from_pretrained(model_id, quantization_config=quantization_config, device_map="auto")
     model.eval()
     custom_prompts = []  ## Should be available in the future
 
 
         # Run analysis
-    output = f"/home/new_storage/sherlock/STS_sherlock/500days/data/annotations_from_models/llava_social_500days{1}TR.csv"
+    output = f"/home/new_storage/sherlock/STS_sherlock/projects data/annotations/llava_social_Sherlock{1}TR.csv"
     results_df = analyze_frames(
-            root_dir="/home/new_storage/sherlock/STS_sherlock/500days/data/frames",
+            root_dir="/home/new_storage/sherlock/data/frames",
             model=model,
             processor=processor,
             tr_ref=1, 

@@ -42,7 +42,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
 
     features = concat_features(feature_names, annotations_path)
     center = False
-    before = False  
+    before = False
     ## If both false then future only
 
 
@@ -69,7 +69,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     ## To account for hrf
     lags = [0]  # Define lags in TRs
     X_lagged = create_lagged_features(X, lags=lags)
-    num_features = len(lags) * len(feature_names)
+    num_features = X.shape[1]
 
     # Normalize again if needed
     X = normalize(X_lagged, axis=0).astype(np.float32)
@@ -82,15 +82,13 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
-        if subj ==14 or subj == 16:
-            logging.warning(f'Skipping subject {subj} due to missing data.')
-            continue
-        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sub-{subj}_task-500daysofsummer_bold_blur_censor_ica.nii.gz')
+        fmri_path = os.path.join(data_path, f'sub{subj}/derivatives', f'sherlock_movie_s{subj}.nii')
         
         mask = mask_path if mask_path else None
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
+        data_clean = data_clean[26:]
         data_clean = data_clean[:len(X)]  # Ensure data_clean matches the length of X
         print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
 
@@ -99,7 +97,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         
         # Fit ridge regression
         logging.info('Fitting ridge regression')
-        ridge_results = RidgeCV(alphas=alphas)
+        ridge_results = RidgeCV(alphas=alphas, scoring='r2', cv=5)
         ridge_results.fit(X_train, y_train)
         ridge_coef = ridge_results.coef_
         
@@ -129,14 +127,13 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         r_nifti_group[subj - 1] = r_nifti
         r_per_feature_nifti_group[subj - 1] = r_per_feature_nifti
         
-        print(f'Subject {subj} done. Max r: {np.max(r_nifti[~np.isnan(r_nifti)])}')
+        print(f'Subject {subj} done. Max r: {np.max(r_nifti[~np.isnan(r_nifti)])} avg top 50 r: {np.mean(np.sort(r[~np.isnan(r)])[-50:])}')
     
     # Save group results
     group_dir = os.path.join(results_dir, model, f"trial_{trials}", "group")
     rmap_paths = [
      os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}", f"{model}_r_sub{subj}.nii")
      for subj in range(1, num_subjects + 1)
-     if subj not in [14, 16]  # Also filter skipped subjects
      ]
     
     os.makedirs(group_dir, exist_ok=True)
@@ -156,32 +153,32 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  '500_social', 
-        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/500days/data/fmri",
-        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/500days/data/annotations_from_models',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/500days/data/results/llava_500days_social',
-        '--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/500days/data/isc_mask/isc_mask_new.nii',
+        "--model",  'cls', 
+        '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
+        '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_whole',
+        #'--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/masks/lateral_occipital_mask.nii',
         "--trials", "1"
     ])
     
     start_time = time.time()
     print(f'Model type: {args.model}')
     
-    alphas = np.logspace(1, 4, 10)
-    #original_data_shape = [61, 73, 61]
-    original_data_shape = [64, 76, 64]
-    num_subjects = 9
+    alphas = np.logspace(1, 7, 20)
+    original_data_shape = [61, 73, 61]
+    #original_data_shape = [64, 76, 64]
+    num_subjects = 1
     means = []
     stds = []
-    trials = [1 ,3, 6, 9 , 12,15 , 20]
+    trials  = range(1,2) 
     for trial in trials:
         main(args.fmri_data_path, args.annotations_path, args.isc_mask_path ,args.model, args.results_dir, 
              original_data_shape, num_subjects, alphas, trial)
-    
-   # for i in range (1,21):
-    #    model = f'llava_{i}TR_onlysocial'
-     #   main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
-      #       original_data_shape, num_subjects, alphas, i)
-    
+
+    #for i in range (1,21):
+        #model = f'llava_{i}TR_onlysocial'
+        #main(args.fmri_data_path, args.annotations_path, args.isc_mask_path, model, args.results_dir, 
+        #     original_data_shape, num_subjects, alphas, i)
+
     duration = round((time.time() - start_time) / 60)
     print(f'Duration: {duration} mins')
