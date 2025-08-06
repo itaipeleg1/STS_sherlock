@@ -10,11 +10,6 @@ from torchvision import transforms
 from PIL import Image
 import argparse
 
-# Cache directories for HF if needed (not relevant for VGG)
-os.environ['HF_HOME'] = '/home/new_storage/sherlock/hf_cache'
-os.environ['TRANSFORMERS_CACHE'] = '/home/new_storage/sherlock/hf_cache'
-os.environ['HUGGINGFACE_HUB_CACHE'] = '/home/new_storage/sherlock/hf_cache'
-
 def extract_frame_number(filepath):
     try:
         filename = os.path.basename(filepath)
@@ -87,17 +82,11 @@ def analyze_frames(root_dir, model, tr_ref, samples_per_seq=8,
 
         i += tr_ref
 
-def get_conv5_model():
-    """Returns VGG16 truncated at conv5_3 (layer 28)."""
-    vgg = torchvision.models.vgg16(pretrained=True)
-    features = list(vgg.features.children())[:29]  # conv5_3 is index 28
-    model = torch.nn.Sequential(*features)
-    model.eval()
-    return model.to(device)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Extract VGG conv5 features')
-    parser.add_argument('--TR_root', type=str, required=True, help='Root directory containing TR sequences')
+    parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV (not used yet)')
     parser.add_argument('--start_seq', type=int, default=0)
     parser.add_argument('--end_seq', type=int, default=1000)
@@ -109,14 +98,24 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    vgg_conv5 = get_conv5_model()
+
+    ## load VGG until conv5_3
+    vgg = torchvision.models.vgg16(pretrained=True)
+    features = list(vgg.features.children())[:29]  # conv5_3 is index 28
+    model = torch.nn.Sequential(*features)
+    model.eval()
+    model.to(device)
+
+    output_path = r"/home/new_storage/sherlock/STS_sherlock/projects data/VGG_conv5"
+    TR_root = r"/home/new_storage/sherlock/data/frames"
+    tr_ref = 1
 
     analyze_frames(
-        root_dir=args.TR_root,
-        model=vgg_conv5,
-        tr_ref=args.tr_ref,
+        root_dir=TR_root,
+        model=model,
+        tr_ref=tr_ref,
         seq_range=(args.start_seq, args.end_seq),
-        output_path=args.output_path,
+        output_path=output_path,
         samples_per_seq=args.samples_per_seq,
         save_interval=args.save_interval,
     )

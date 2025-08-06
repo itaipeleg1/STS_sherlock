@@ -18,7 +18,7 @@ models_config_dict = {
     'llava_1TR_video' : ["llava_1.5s_video_new"],'llava_2TR_video' :["llava_3.0s_video"], "llava_3TR_video":["llava_4.5s_video"], "llava_4TR_video":["llava_6.0s_video"],
     'llava_5TR_video' :["llava_7.5s_video"],'llava_6TR_video' :["llava_9.0s_video"],'llava_7TR_video' :["llava_10.5s_video"],
     'llava_8TR_video' :["llava_12.0s_video"],'llava_9TR_video' :["llava_13.5s_video"],
-      "llava_music":["social_speak_music"],"cls":["cls_mat_pca"],
+      "llava_music":["social_speak_music"],"cls":["cls_mat_pca"],"vgg":["vgg_mat_pca"],
      'llava_only_face': ['face_llava_prob(0.4)'], "cls":["cls_mat_pca"],
     'llava_only_face_filled': ['llava_face_filled'],
     "leyla_face": ['face'],"llava_logits": ['llava_social_logits']
