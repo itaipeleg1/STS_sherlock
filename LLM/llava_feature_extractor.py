@@ -83,67 +83,66 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         final=0
         ## I need to figure out how to use prompts in a general way
         BATCHSIZE = 8
-        prompt1 = f"USER: <image>\nIs there a face appearing in this image? Answer 'yes' or 'no'.\nASSISTANT:"
-        prompt2 = f"USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer 'yes' or 'no'.\nASSISTANT:"
-        prompt3 = f"USER: <image>\nIs there a person in this image who appears to be speaking or making a gesture that suggests communication? Answer 'yes' or 'no'.\nASSISTANT:"
+        prompt1 = f"USER: <image>\nIs this scene taking place indoors? Answer 'yes' or 'no'\nASSISTANT:"
+       # prompt2 = f"USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer 'yes' or 'no'.\nASSISTANT:"
+        #prompt3 = f"USER: <image>\nIs there a person in this image who appears to be speaking or making a gesture that suggests communication? Answer 'yes' or 'no'.\nASSISTANT:"
         for batch_start in range(0, len(sampled_frames), BATCHSIZE):
             batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
             images = [Image.open(path).convert("RGB") for path in batch_paths]
             prompts1 = [prompt1] * len(images)  # Repeat prompt for each image in batch
-            prompts2 = [prompt2] * len(images)  # Repeat prompt for each image in batch
-            prompts3 = [prompt3] * len(images)  # Repeat prompt for each image
+         #   prompts2 = [prompt2] * len(images)  # Repeat prompt for each image in batch
+          #  prompts3 = [prompt3] * len(images)  # Repeat prompt for each image
             inputs1 = processor(images=images, text=prompts1, return_tensors="pt").to(model.device)
-            inputs2 = processor(images=images, text=prompts2, return_tensors="pt").to(model.device)
-            inputs3 = processor(images=images, text=prompts3, return_tensors="pt").to(model.device)
+           # inputs2 = processor(images=images, text=prompts2, return_tensors="pt").to(model.device)
+            #inputs3 = processor(images=images, text=prompts3, return_tensors="pt").to(model.device)
             # Generate with logits returned
             with torch.no_grad():
-                outputs1 = model.generate(
+           #     outputs1 = model.generate(
+           #         **inputs1,
+           #         max_new_tokens=1,
+          #      )
+          #      outputs2 = model.generate(
+         #           **inputs2,
+         #           max_new_tokens=1,
+         #       )
+         #       outputs3 = model.generate(
+         #           **inputs3,
+        #            max_new_tokens=1,
+        #        )
+                outputs = model.generate(
                     **inputs1,
                     max_new_tokens=1,
-                )
-                outputs2 = model.generate(
-                    **inputs2,
-                    max_new_tokens=1,
-                )
-                outputs3 = model.generate(
-                    **inputs3,
-                    max_new_tokens=1,
-                )
-                outputs =model(
-                    **inputs1,
-                    return_dict=True,
-                    output_hidden_states=True,
+                    return_dict_in_generate=True,
+                    output_hidden_states=True
                 )
 
-            cls_embeddings = outputs.hidden_states[-1]
-            cls_embeddings = cls_embeddings[:, -1, :]  # Get CLS token embeddings
+            cls_embeddings = outputs.hidden_states[-1][-1][:, -1, :]  # Get last token from last layer
             print("[DEBUG] CLS batch std:", cls_embeddings.std().item())
             print("DEBUG: Shape of cls_embeddings:", cls_embeddings.shape)
 
             for cls in cls_embeddings:
                 language_latent.append(cls.cpu().numpy())
-            generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
-            generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
-            generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
-            generated_text1 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text1]
-            generated_text2 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text2]
-            generated_text3 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text3]
-            print(generated_text1)
-            print(generated_text2)
-            print(generated_text3)
-            for text1, text2, text3 in zip(generated_text1, generated_text2, generated_text3):
+          #  generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
+        #    generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
+       #     generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
+           # generated_text1 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text1]
+         #   generated_text2 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text2]
+          #  generated_text3 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text3]
+          #  print(generated_text1)
+          #  print(generated_text2)
+         #   print(generated_text3)
+         #   for text1 in zip(generated_text1):
                 # Process the generated text to determine the label
-                if "yes" in text1.lower():
-                    social_count += 1
-                if "yes" in text2.lower():
-                    gaze_count += 1
-                if "yes" in text3.lower():
-                    speak_count += 1
+           #     if "yes" in text1.lower():
+          #          social_count += 1
+           #     if "yes" in text2.lower():
+           #         gaze_count += 1
+           #     if "yes" in text3.lower():
+            #        speak_count += 1
         if language_latent:
-
             avg = np.mean(np.stack(language_latent), axis=0)
             print(f"[DEBUG] Saving latent for group {group_label}, mean: {avg.mean():.4f}, std: {avg.std():.4f}")
-            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS/{group_label}_latent.npy", avg)
+            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_inside/{group_label}_latent.npy", avg)
         print(f"TR{group_label.split('.csv')[0]}:  Social: {social_count}, Gaze: {gaze_count}, Speak: {speak_count}")
 
         threshold = 0.5
@@ -187,7 +186,7 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=1000, help='Ending sequence number')
+    parser.add_argument('--end_seq', type=int, default=919, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')

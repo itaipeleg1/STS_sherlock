@@ -4,6 +4,7 @@ from sklearn.linear_model import RidgeCV
 from scipy.stats import zscore
 from sklearn.preprocessing import normalize
 from sklearn.model_selection import train_test_split
+from scipy.stats import pearsonr
 import time
 import argparse
 import logging
@@ -41,29 +42,46 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     feature_names = models_config_dict[model]
 
     features = concat_features(feature_names, annotations_path)
-    center = False
-    before = False
-    ## If both false then future only
+
 
 
     
+    # Shuffle features across timepoints in blocks of size `trials`
     if trials > 1:
-        window = np.ones(trials) / trials  # Define the averaging window
+        num_samples, num_features = features.shape
+        block_size = trials
 
-        if center:  
-            features = np.convolve(features.flatten(), window, mode='same').reshape(-1, 1)  # Centered averaging
+        # Truncate to a multiple of block_size
+        num_full_blocks = num_samples // block_size
+        truncated_len = num_full_blocks * block_size
+        features_truncated = features[:truncated_len]
 
-        elif before:
-            features = np.convolve(features.flatten(), window, mode='full')[:len(features)].reshape(-1, 1)  # Past-only averaging
+        # Reshape to (num_blocks, block_size, 40)
+        blocks = features_truncated.reshape(num_full_blocks, block_size, num_features)
 
-        else:  
-            features = np.convolve(features.flatten(), window, mode='full')[trials-1:len(features)+trials-1].reshape(-1, 1)  # Future-only averaging
+        # Shuffle block order (each block is a sequence of timepoints)
+        np.random.seed(42)  # Optional: reproducibility
+        np.random.shuffle(blocks)
 
+        # Flatten back to (truncated_len, 40)
+        shuffled_features = blocks.reshape(-1, num_features)
+
+        # Optionally add leftover rows that didn't fit into full blocks
+        if truncated_len < num_samples:
+            leftovers = features[truncated_len:]
+            features = np.vstack([shuffled_features, leftovers])
+        else:
+            features = shuffled_features
+
+        # Sanity check
+        assert features.shape == (num_samples, num_features), "Shape mismatch after shuffling"
 
     
     
     X = normalize(features, axis=0).astype(np.float32)
-
+    face_indices = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/face_mask.npy")
+    face_mask = np.zeros(X.shape[0], dtype=bool)
+    face_mask[face_indices] = True
 
     ### Talk with Idan about this
     ## To account for hrf
@@ -71,13 +89,16 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     X_lagged = create_lagged_features(X, lags=lags)
     num_features = X.shape[1]
 
-    # Normalize again if needed
+    # Normalize again if needed3
     X = normalize(X_lagged, axis=0).astype(np.float32)
+    #X = X[face_mask]
 
 
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
-    
+   # weights_save_dir = os.path.join(results_dir,"weights")
+    #os.makedirs(weights_save_dir, exist_ok=True)
+    all_subject_weights = []
     for subj in range(1, num_subjects + 1):
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
@@ -90,6 +111,8 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
         data_clean = data_clean[26:]
         data_clean = data_clean[:len(X)]  # Ensure data_clean matches the length of X
+       # data_clean = data_clean[face_mask]
+
         print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
 
 
@@ -97,10 +120,15 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         
         # Fit ridge regression
         logging.info('Fitting ridge regression')
-        ridge_results = RidgeCV(alphas=alphas, scoring='r2', cv=5)
+        ridge_results = RidgeCV(alphas=alphas)
         ridge_results.fit(X_train, y_train)
         ridge_coef = ridge_results.coef_
         
+        ## Individual weights matrix
+        #subject_weights = ridge_coef.T  # Shape: (num_features, num_voxels)
+       # all_subject_weights.append(subject_weights)
+
+
         # Predict and calculate correlations
         logging.info('Predicting and calculating correlation per voxel')
         y_pred = ridge_results.predict(X_test)
@@ -142,6 +170,10 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     save_group_nii(model, r_mean, weight_mean, group_dir, feature_names, img_affine)
     print(f'Group results saved. Max r: {np.max(r_mean[~np.isnan(r_mean)])}')
 
+    ## group weights
+    #concat_weights = np.vstack(all_subject_weights)  # Shape: (num_subjects * num_features, num_voxels)
+    #np.save(os.path.join(weights_save_dir, f"{model}_all_subjects_weights.npy"), concat_weights)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--fmri_data_path', type=str, required=True)
@@ -153,18 +185,18 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'vgg', 
+        "--model",  "cls_inside_pca1", 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/vgg_whole',
-        #'--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_inside_pca1',
+       #'--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/masks/sts_mask.nii',
         "--trials", "1"
     ])
     
     start_time = time.time()
     print(f'Model type: {args.model}')
     
-    alphas = np.logspace(1, 7, 20)
+    alphas = np.logspace(1, 4, 10)
     original_data_shape = [61, 73, 61]
     #original_data_shape = [64, 76, 64]
     num_subjects = 1
