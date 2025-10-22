@@ -82,8 +82,8 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         samples_processed = len(sampled_frames)
         final=0
         ## I need to figure out how to use prompts in a general way
-        BATCHSIZE = 8
-        prompt1 = f"USER: <image>\nIs this scene taking place indoors? Answer 'yes' or 'no'\nASSISTANT:"
+        BATCHSIZE = 2
+        prompt1 = "USER: <image>\nDescribe the social interactions in this scene, including people's gaze, gestures, and spatial relationships.\nASSISTANT:"
        # prompt2 = f"USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer 'yes' or 'no'.\nASSISTANT:"
         #prompt3 = f"USER: <image>\nIs there a person in this image who appears to be speaking or making a gesture that suggests communication? Answer 'yes' or 'no'.\nASSISTANT:"
         for batch_start in range(0, len(sampled_frames), BATCHSIZE):
@@ -111,17 +111,79 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         #        )
                 outputs = model.generate(
                     **inputs1,
-                    max_new_tokens=1,
+                    max_new_tokens=40,
                     return_dict_in_generate=True,
-                    output_hidden_states=True
+                    output_hidden_states=True,
+                    output_attentions=True
                 )
 
-            cls_embeddings = outputs.hidden_states[-1][-1][:, -1, :]  # Get last token from last layer
-            print("[DEBUG] CLS batch std:", cls_embeddings.std().item())
-            print("DEBUG: Shape of cls_embeddings:", cls_embeddings.shape)
+            # Extract embeddings from the 5 tokens with highest AVERAGE attention
+            # across all generated tokens at layer 25
 
-            for cls in cls_embeddings:
-                language_latent.append(cls.cpu().numpy())
+            # Get the original input length (before any generation)
+            # This is the length at the first generation step
+            original_input_len = outputs.attentions[0][24].shape[-1]
+
+            # Collect attention from all generation steps at layer 25
+            # Only look at attention to ORIGINAL input tokens (not newly generated ones)
+            all_token_attentions = []
+            for gen_step in range(len(outputs.attentions)):
+                attention_layer_25 = outputs.attentions[gen_step][24]  # (batch, heads, seq_len_out, seq_len_in)
+                avg_attention = attention_layer_25.mean(dim=1)  # Average across heads: (batch, seq_len_out, seq_len_in)
+
+                # Take attention from the last output token (the newly generated one)
+                # This is always at index -1 regardless of seq_len_out
+                last_token_attention = avg_attention[:, -1, :]  # (batch, seq_len_in)
+
+                # Only keep attention to the ORIGINAL input tokens
+                last_token_attention = last_token_attention[:, :original_input_len]  # (batch, original_input_len)
+                all_token_attentions.append(last_token_attention)
+
+            # Stack: (num_gen_steps, batch, original_input_len)
+            all_token_attentions = torch.stack(all_token_attentions, dim=0)
+
+            # Average across all generation steps: (batch, original_input_len)
+            avg_attention_across_generation = all_token_attentions.mean(dim=0)
+
+            # Get hidden states from layer 25 at the FIRST generation step
+            # This captures the initial semantic processing before generation bias
+            hidden_states_layer_24 = outputs.hidden_states[0][24]  # (batch, seq_len, hidden_dim)
+
+            # For each image in the batch
+            batch_embeddings = []
+            for batch_idx in range(avg_attention_across_generation.shape[0]):
+                # Get AVERAGED attention scores for this sample
+                attn_scores = avg_attention_across_generation[batch_idx]  # Shape: (seq_len_in,)
+
+                # Find indices of top 5 input tokens with highest average attention
+                top5_indices = torch.topk(attn_scores, k=5).indices  # Shape: (5,)
+
+                # Extract embeddings for these 5 tokens from layer 25
+                top5_embeddings = hidden_states_layer_24[batch_idx, top5_indices, :]  # Shape: (5, hidden_dim)
+
+                # Concatenate the 5 embeddings into a single vector
+                concatenated = top5_embeddings.reshape(-1)  # Shape: (5 * hidden_dim,)
+
+                # Convert to numpy
+                concatenated_np = concatenated.cpu().numpy()
+
+                # Clip extreme values to prevent inf/nan propagation
+                # Clip to reasonable range (e.g., -100 to 100)
+                concatenated_np = np.clip(concatenated_np, -100, 100)
+
+                # Replace any remaining NaNs with 0
+                concatenated_np = np.nan_to_num(concatenated_np, nan=0.0, posinf=100.0, neginf=-100.0)
+
+                batch_embeddings.append(concatenated_np)
+
+            print(f"[DEBUG] Batch embeddings shape: {batch_embeddings[0].shape}")
+            if len(batch_embeddings) > 0:
+                all_batch = np.stack(batch_embeddings)
+                print(f"[DEBUG] Batch mean: {np.mean(all_batch):.4f}, std: {np.std(all_batch):.4f}")
+                print(f"[DEBUG] Has inf: {np.any(np.isinf(all_batch))}, Has nan: {np.any(np.isnan(all_batch))}")
+
+            for embedding in batch_embeddings:
+                language_latent.append(embedding)
           #  generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
         #    generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
        #     generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
@@ -142,7 +204,7 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         if language_latent:
             avg = np.mean(np.stack(language_latent), axis=0)
             print(f"[DEBUG] Saving latent for group {group_label}, mean: {avg.mean():.4f}, std: {avg.std():.4f}")
-            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_inside/{group_label}_latent.npy", avg)
+            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_social_layer25_5toptokens_40tokens/{group_label}_latent.npy", avg)
         print(f"TR{group_label.split('.csv')[0]}:  Social: {social_count}, Gaze: {gaze_count}, Speak: {speak_count}")
 
         threshold = 0.5

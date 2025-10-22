@@ -18,23 +18,10 @@ import torch
 import numpy as np
 
 
-def create_lagged_features(X, lags=[0, 1, 2, 3, 4]):
-    """
-    X: (n_samples, n_features)
-    lags: list of lags in number of TRs
-    """
-    lagged_X = []
-    for lag in lags:
-        if lag == 0:
-            lagged_X.append(X)
-        else:
-            lagged = np.roll(X, shift=lag, axis=0)
-            lagged[:lag, :] = 0  # Zero padding the beginning
-            lagged_X.append(lagged)
-    return np.hstack(lagged_X)
-
 
 def concat_features(features_list, single_features_dir):
+    ## Ensure same length
+
     processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy'),allow_pickle=True) for item in features_list]
     return np.concatenate(processed_annotations, axis=1)
 
@@ -79,27 +66,16 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     
     
     X = normalize(features, axis=0).astype(np.float32)
+    ## This is used to mask for face if needed later
     face_indices = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/face_mask.npy")
     face_mask = np.zeros(X.shape[0], dtype=bool)
     face_mask[face_indices] = True
-
-    ### Talk with Idan about this
-    ## To account for hrf
-    lags = [0]  # Define lags in TRs
-    X_lagged = create_lagged_features(X, lags=lags)
     num_features = X.shape[1]
-
-    # Normalize again if needed3
-    X = normalize(X_lagged, axis=0).astype(np.float32)
-    #X = X[face_mask]
-
 
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
-   # weights_save_dir = os.path.join(results_dir,"weights")
-    #os.makedirs(weights_save_dir, exist_ok=True)
-    all_subject_weights = []
-    for subj in range(1, num_subjects + 1):
+    all_subjects_weights = []
+    for subj in range(1,num_subjects+1):
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
@@ -110,8 +86,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
         data_clean = data_clean[26:]
-        data_clean = data_clean[:len(X)]  # Ensure data_clean matches the length of X
-       # data_clean = data_clean[face_mask]
+        data_clean = data_clean[:len(X)]  
 
         print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
 
@@ -125,8 +100,12 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         ridge_coef = ridge_results.coef_
         
         ## Individual weights matrix
-        #subject_weights = ridge_coef.T  # Shape: (num_features, num_voxels)
-       # all_subject_weights.append(subject_weights)
+        subject_weights = ridge_coef.T # shape (features,voxels)
+        print(f'Subject {subj} weights shape: {subject_weights.shape}')
+        all_subjects_weights.append(subject_weights) # shape (num_features, num_voxels)
+        print("The shape of all_subjects_weights is:", np.array(all_subjects_weights).shape)
+       
+
 
 
         # Predict and calculate correlations
@@ -171,8 +150,9 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     print(f'Group results saved. Max r: {np.max(r_mean[~np.isnan(r_mean)])}')
 
     ## group weights
-    #concat_weights = np.vstack(all_subject_weights)  # Shape: (num_subjects * num_features, num_voxels)
-    #np.save(os.path.join(weights_save_dir, f"{model}_all_subjects_weights.npy"), concat_weights)
+    concat_weights = np.hstack(all_subjects_weights) # shape: (num_features,num_voxels*num_subjects)
+    print(f'All subjects weights shape: {concat_weights.shape}')
+    np.save(os.path.join(results_dir, f"{model}_all_subjects_weights.npy"), concat_weights)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -185,11 +165,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  "cls_inside_pca1", 
+        "--model",  'unique_variance_social', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_inside_pca1',
-       #'--isc_mask_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/masks/sts_mask.nii',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_uniquevar_whole',
+        #'--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/isc_mask.nii",
         "--trials", "1"
     ])
     
@@ -199,7 +179,7 @@ if __name__ == '__main__':
     alphas = np.logspace(1, 4, 10)
     original_data_shape = [61, 73, 61]
     #original_data_shape = [64, 76, 64]
-    num_subjects = 1
+    num_subjects = 17
     means = []
     stds = []
     trials  = range(1,2) 
