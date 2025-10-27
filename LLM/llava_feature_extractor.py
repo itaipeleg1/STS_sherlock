@@ -1,11 +1,20 @@
 
 import os
+import sys
 ## Set environment variables for Hugging Face cache
 ## This is to avoid running out of space in the default cache location
 os.environ['HF_HOME'] = '/home/new_storage/sherlock/hf_cache'
 os.environ['TRANSFORMERS_CACHE'] = '/home/new_storage/sherlock/hf_cache'
 os.environ['HUGGINGFACE_HUB_CACHE'] = '/home/new_storage/sherlock/hf_cache'
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(current_dir, '..', '..', 'src')
+sys.path.append(src_path)
+sys.path.append('/home/new_storage/sherlock/llava-interp')
+
+from src.HookedLVLM import HookedLVLM
 import torch
+import torch.nn.functional as F
 from transformers import BitsAndBytesConfig
 from transformers import pipeline
 from transformers import AutoProcessor, AutoModelForVision2Seq
@@ -14,6 +23,8 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import argparse
+
+
 
 def extract_frame_number(filepath):
     """Extract frame number from filepath."""
@@ -25,7 +36,9 @@ def extract_frame_number(filepath):
     except (ValueError, IndexError):
         return -1
 
-def analyze_frames(root_dir,model,processor,tr_ref, 
+def analyze_frames(root_dir,model,tokenizer,
+                   tr_ref, 
+                    layer,
                   samples_per_seq=8,
                   seq_prefix='TR',
                   seq_range=None,  
@@ -33,8 +46,8 @@ def analyze_frames(root_dir,model,processor,tr_ref,
                   output_path='results.csv',
                   save_interval=50,
                     ):
-    
 
+    tokenizer = tokenizer
     samples_per_seq = samples_per_seq*tr_ref
     # Get all TR directories
     seq_dirs = [d for d in os.listdir(root_dir) 
@@ -69,176 +82,117 @@ def analyze_frames(root_dir,model,processor,tr_ref,
         # Sample frames evenly
         total_frames = len(frame_paths)
         indices = [
-            i * (total_frames - 1) // (samples_per_seq - 1) 
-            for i in range(samples_per_seq)
+            idx * (total_frames - 1) // (samples_per_seq - 1)
+            for idx in range(samples_per_seq)
         ]
-        sampled_frames = [frame_paths[i] for i in indices]
+        sampled_frames = [frame_paths[idx] for idx in indices]
         
-        # Initialize counters for each prompt
-        social_count = 0
-        gaze_count = 0
-        speak_count= 0
-        object_count = 0
+        # Get model components and configure
+
+        norm = model.model.language_model.model.norm
+        lm_head = model.model.language_model.lm_head
+        embedding_layer = model.model.language_model.model.embed_tokens
         samples_processed = len(sampled_frames)
-        final=0
-        ## I need to figure out how to use prompts in a general way
-        BATCHSIZE = 2
-        prompt1 = "USER: <image>\nDescribe the social interactions in this scene, including people's gaze, gestures, and spatial relationships.\nASSISTANT:"
-       # prompt2 = f"USER: <image>\nIs there a person whose gaze is directed towards someone off-screen in this image? Answer 'yes' or 'no'.\nASSISTANT:"
-        #prompt3 = f"USER: <image>\nIs there a person in this image who appears to be speaking or making a gesture that suggests communication? Answer 'yes' or 'no'.\nASSISTANT:"
-        for batch_start in range(0, len(sampled_frames), BATCHSIZE):
-            batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
-            images = [Image.open(path).convert("RGB") for path in batch_paths]
-            prompts1 = [prompt1] * len(images)  # Repeat prompt for each image in batch
-         #   prompts2 = [prompt2] * len(images)  # Repeat prompt for each image in batch
-          #  prompts3 = [prompt3] * len(images)  # Repeat prompt for each image
-            inputs1 = processor(images=images, text=prompts1, return_tensors="pt").to(model.device)
-           # inputs2 = processor(images=images, text=prompts2, return_tensors="pt").to(model.device)
-            #inputs3 = processor(images=images, text=prompts3, return_tensors="pt").to(model.device)
-            # Generate with logits returned
-            with torch.no_grad():
-           #     outputs1 = model.generate(
-           #         **inputs1,
-           #         max_new_tokens=1,
-          #      )
-          #      outputs2 = model.generate(
-         #           **inputs2,
-         #           max_new_tokens=1,
-         #       )
-         #       outputs3 = model.generate(
-         #           **inputs3,
-        #            max_new_tokens=1,
-        #        )
-                outputs = model.generate(
-                    **inputs1,
-                    max_new_tokens=40,
-                    return_dict_in_generate=True,
-                    output_hidden_states=True,
-                    output_attentions=True
-                )
+        prompt = "USER: <image>\nIs there social interaction in this image?.\nASSISTANT:"
+        keyword = "social"
 
-            # Extract embeddings from the 5 tokens with highest AVERAGE attention
-            # across all generated tokens at layer 25
+        # Process images one at a time (no batching)
+        for frame_path in sampled_frames:
+            image = Image.open(frame_path).convert("RGB")
 
-            # Get the original input length (before any generation)
-            # This is the length at the first generation step
-            original_input_len = outputs.attentions[0][24].shape[-1]
+            # Forward pass to get hidden states
+            outputs = model.forward(image, prompt, output_hidden_states=True)
+            hidden_states = outputs.hidden_states
 
-            # Collect attention from all generation steps at layer 25
-            # Only look at attention to ORIGINAL input tokens (not newly generated ones)
-            all_token_attentions = []
-            for gen_step in range(len(outputs.attentions)):
-                attention_layer_25 = outputs.attentions[gen_step][24]  # (batch, heads, seq_len_out, seq_len_in)
-                avg_attention = attention_layer_25.mean(dim=1)  # Average across heads: (batch, seq_len_out, seq_len_in)
+            ## Extract hidden states at layer 25
+            layer_hidden = hidden_states[layer]  # shape (1, seq_len, hidden_dim)
+            print(f"Layer {layer} hidden states shape: {layer_hidden.shape}")
 
-                # Take attention from the last output token (the newly generated one)
-                # This is always at index -1 regardless of seq_len_out
-                last_token_attention = avg_attention[:, -1, :]  # (batch, seq_len_in)
+            ## Encode the keyword
+            print(f"\n=== Analyzing similarity to keyword: '{keyword}' ===")
+            keyword_tokens = tokenizer.encode(keyword, add_special_tokens=False)
 
-                # Only keep attention to the ORIGINAL input tokens
-                last_token_attention = last_token_attention[:, :original_input_len]  # (batch, original_input_len)
-                all_token_attentions.append(last_token_attention)
+            ## Get key word embedding
+            keyword_tensor = torch.tensor(keyword_tokens).to(model.model.device)
+            keyword_embeddings = embedding_layer(keyword_tensor)
+            keyword_embeddings = F.normalize(keyword_embeddings, dim=-1)
 
-            # Stack: (num_gen_steps, batch, original_input_len)
-            all_token_attentions = torch.stack(all_token_attentions, dim=0)
+            ## For each IMAGE token position, compute what it predicts and its similarity to keyword
+            num_image_tokens = 576  # Assuming 576 image tokens for 336x336
+            all_similarities = []
+            all_predicted_tokens = []
 
-            # Average across all generation steps: (batch, original_input_len)
-            avg_attention_across_generation = all_token_attentions.mean(dim=0)
+            for pos in range(num_image_tokens):
+                token_hidden = layer_hidden[0, pos, :].unsqueeze(0)  # shape (1, hidden_dim)
 
-            # Get hidden states from layer 25 at the FIRST generation step
-            # This captures the initial semantic processing before generation bias
-            hidden_states_layer_24 = outputs.hidden_states[0][24]  # (batch, seq_len, hidden_dim)
+                # Compute logits for this token position
+                logits = norm(token_hidden)
+                logits = lm_head(logits)  # shape (1, vocab_size)
 
-            # For each image in the batch
-            batch_embeddings = []
-            for batch_idx in range(avg_attention_across_generation.shape[0]):
-                # Get AVERAGED attention scores for this sample
-                attn_scores = avg_attention_across_generation[batch_idx]  # Shape: (seq_len_in,)
+                # Get predicted token
+                predicted_token_id = logits.argmax(dim=-1).item()
+                predicted_token = tokenizer.decode([predicted_token_id])
 
-                # Find indices of top 5 input tokens with highest average attention
-                top5_indices = torch.topk(attn_scores, k=5).indices  # Shape: (5,)
+                # Get embedding of predicted token
+                predicted_token_embedding = embedding_layer(torch.tensor([predicted_token_id]).to(model.model.device))
 
-                # Extract embeddings for these 5 tokens from layer 25
-                top5_embeddings = hidden_states_layer_24[batch_idx, top5_indices, :]  # Shape: (5, hidden_dim)
+                # Normalize predicted token embedding
+                predicted_token_embedding_norm = F.normalize(predicted_token_embedding, dim=-1)
 
-                # Concatenate the 5 embeddings into a single vector
-                concatenated = top5_embeddings.reshape(-1)  # Shape: (5 * hidden_dim,)
+                # Compute cosine similarity between predicted token and keyword
+                similarity = torch.matmul(predicted_token_embedding_norm, keyword_embeddings.T)
 
-                # Convert to numpy
-                concatenated_np = concatenated.cpu().numpy()
+                # Average across keyword tokens if multiple
+                if similarity.dim() > 1:
+                    similarity = similarity.mean(dim=-1)
 
-                # Clip extreme values to prevent inf/nan propagation
-                # Clip to reasonable range (e.g., -100 to 100)
-                concatenated_np = np.clip(concatenated_np, -100, 100)
+                all_similarities.append(similarity.item())
+                all_predicted_tokens.append(predicted_token)
 
-                # Replace any remaining NaNs with 0
-                concatenated_np = np.nan_to_num(concatenated_np, nan=0.0, posinf=100.0, neginf=-100.0)
+            # Convert to tensor
+            all_similarities = torch.tensor(all_similarities)
 
-                batch_embeddings.append(concatenated_np)
+            # Get top 10 IMAGE token positions by similarity to keyword
+            top_10_values, top_10_indices = torch.topk(all_similarities, k=min(10, num_image_tokens))
 
-            print(f"[DEBUG] Batch embeddings shape: {batch_embeddings[0].shape}")
-            if len(batch_embeddings) > 0:
-                all_batch = np.stack(batch_embeddings)
-                print(f"[DEBUG] Batch mean: {np.mean(all_batch):.4f}, std: {np.std(all_batch):.4f}")
-                print(f"[DEBUG] Has inf: {np.any(np.isinf(all_batch))}, Has nan: {np.any(np.isnan(all_batch))}")
+            # Collect embeddings of top tokens
+            top_embeddings = []
+            top_words = []
+            for pos_idx in top_10_indices:
+                pos = pos_idx.item()
+                token_hidden = layer_hidden[0, pos, :]  # shape (hidden_dim,)
+                top_embeddings.append(token_hidden.cpu().numpy())
+                top_words.append(all_predicted_tokens[pos])
 
-            for embedding in batch_embeddings:
-                language_latent.append(embedding)
-          #  generated_text1 = processor.batch_decode(outputs1, skip_special_tokens=True)
-        #    generated_text2 = processor.batch_decode(outputs2, skip_special_tokens=True)
-       #     generated_text3 = processor.batch_decode(outputs3, skip_special_tokens=True)
-           # generated_text1 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text1]
-         #   generated_text2 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text2]
-          #  generated_text3 = [t.split("ASSISTANT:")[-1].strip() for t in generated_text3]
-          #  print(generated_text1)
-          #  print(generated_text2)
-         #   print(generated_text3)
-         #   for text1 in zip(generated_text1):
-                # Process the generated text to determine the label
-           #     if "yes" in text1.lower():
-          #          social_count += 1
-           #     if "yes" in text2.lower():
-           #         gaze_count += 1
-           #     if "yes" in text3.lower():
-            #        speak_count += 1
+            # Average the top 10 token embeddings
+            if top_embeddings:
+                top_embeddings_stack = np.stack(top_embeddings)  # shape (10, hidden_dim)
+                mean_embedding = np.mean(top_embeddings_stack, axis=0)  # shape (hidden_dim,)
+                language_latent.append(mean_embedding)
+
+                ## print the top 10 words
+                print(f"\n=== Top 10 predicted words most similar to '{keyword}' ===")
+                for idx, (word, score) in enumerate(zip(top_words, top_10_values)):
+                    print(f"{idx+1}. '{word}' (similarity: {score.item():.4f})")
+
         if language_latent:
-            avg = np.mean(np.stack(language_latent), axis=0)
-            print(f"[DEBUG] Saving latent for group {group_label}, mean: {avg.mean():.4f}, std: {avg.std():.4f}")
-            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_social_layer25_5toptokens_40tokens/{group_label}_latent.npy", avg)
-        print(f"TR{group_label.split('.csv')[0]}:  Social: {social_count}, Gaze: {gaze_count}, Speak: {speak_count}")
+            # Stack all frame embeddings into a matrix (num_frames, hidden_dim)
+            embeddings_matrix = np.stack(language_latent, axis=0)
 
-        threshold = 0.5
-        social= 1 if social_count > threshold*samples_processed else 0
-        speak = 1 if speak_count > threshold*samples_processed else 0
-        gaze = 1 if gaze_count > threshold*samples_processed else 0
-        if social == 1:
-            final = 1
-        elif speak == 1 and gaze == 1:
-            final = 1
-        else:
-            final = 0
+            # Compute average across all frames
+            avg = np.mean(embeddings_matrix, axis=0)
 
-        results.append([group_label, social,speak,gaze,final, samples_processed])
+            print(f"[DEBUG] Saving latent for group {group_label}")
+            print(f"[DEBUG] Matrix shape: {embeddings_matrix.shape}, mean: {avg.mean():.4f}, std: {avg.std():.4f}")
 
-        
-        # Save intermediate results
-        if len(results) % save_interval == 0:
-            
-            results_df = pd.DataFrame(results,columns=['TR', 'social', 'speak', 'gaze', 'final', 'samples_processed'])
-           # results_df.to_csv(output_path, index=False)
-            print(f"\nIntermediate results saved to {output_path}")
+            # Save the full matrix of embeddings (one row per frame)
+           
+
+            # Save the averaged vector
+            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_social_layer25/{group_label}_latent.npy", avg)
         
         i += tr_ref #  no overlap between groups
 
-    results_df = pd.DataFrame(results,columns=['TR', 'social', 'speak', 'gaze', 'final', 'samples_processed'])
-    #results_df.to_csv(output_path, index=False)
-    print(f"\nFinal results saved to {output_path}")
-
-    ## Save the social column as numpy
-    annotation = results_df['social'].values
-    annotation = np.reshape(annotation, (-1, 1)) ## make it 2D (n_samples, 1)
-    output_np = output_path.split('.csv')[0] + '.npy'
-   # np.save(output_np, annotation)
 
 
 if __name__ == "__main__":
@@ -247,7 +201,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze frames from video sequences using LLaVA model')
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
-    parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
+    parser.add_argument('--start_seq', type=int, default=222, help='Starting sequence number')
     parser.add_argument('--end_seq', type=int, default=919, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
@@ -256,18 +210,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Running on device: {device}")
-    # Configure model
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16
-        )
-    
-    model_id = "llava-hf/llava-1.5-7b-hf"
-    processor = AutoProcessor.from_pretrained(model_id)
-    tokenizer = processor.tokenizer
-    model = AutoModelForVision2Seq.from_pretrained(model_id, quantization_config=quantization_config, device_map="auto")
-    model.eval()
-    custom_prompts = []  ## Should be available in the future
+    model = HookedLVLM(device=device, quantize=True, quantize_type="4bit")
+    tokenizer = model.processor.tokenizer
 
 
         # Run analysis
@@ -275,8 +219,8 @@ if __name__ == "__main__":
     results_df = analyze_frames(
             root_dir="/home/new_storage/sherlock/data/frames",
             model=model,
-            processor=processor,
-            tr_ref=1, 
+            tokenizer=tokenizer,
+            tr_ref=1,layer=25, 
             seq_range=(args.start_seq, args.end_seq),
             output_path=output,
             samples_per_seq=args.samples_per_seq,

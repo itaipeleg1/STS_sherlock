@@ -158,7 +158,7 @@ def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_n
 
 
 if __name__ == "__main__":
-    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_whole/cls_llava/trial_1"
-    model2_folder = "//home/new_storage/sherlock/STS_sherlock/projects data/results/llava_face_llava/llava_face_llava/trial_1"
+    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_whole/cls_social/trial_1"
+    model2_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_uniquevar_whole/unique_variance_social/trial_1"
 
-    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="cls_llava", model2_name="llava_face_llava", mask=None)
+    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="cls_social", model2_name="unique_variance_social", mask=None)

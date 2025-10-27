@@ -13,11 +13,11 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str, model:str
     #threshold = np.percentile(data[data > 0], 90)
     img = nib.Nifti1Image(data, affine=nii.affine)
     plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=f'{model} - {feature}, max r: {np.max(data)}, avg top 100 r: {np.mean(np.sort(data[data > 0])[-100:])}',
-                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/projects data/results/cls_social_layer25_40tokens.html")
+                              symmetric_cmap=False, cmap=plotting.cm.black_red, vmax=np.max(data)).save_as_html(r"/home/new_storage/sherlock/STS_sherlock/projects data/results/unique_variance_social-cls_social_unique_group_significant.html")
 
 
 
-path = r"/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_layer25_40tokens_whole/cls_social_layer25_40tokens/trial_1/subject3/cls_social_layer25_40tokens_r_sub3.nii"
+path = r"/home/new_storage/sherlock/STS_sherlock/projects data/results/unique_variance_social-cls_social_unique_group_significant.nii.gz"
 
-plot_voxelwise_encoding_results_on_surface(path, model='CLS Social Layer 25 40 Tokens', feature='')
+plot_voxelwise_encoding_results_on_surface(path, model='CLS Social Layer 25 - unique variance', feature='')
 

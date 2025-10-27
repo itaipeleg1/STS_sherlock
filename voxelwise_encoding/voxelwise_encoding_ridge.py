@@ -75,7 +75,7 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
     all_subjects_weights = []
-    for subj in range(1,num_subjects+1):
+    for subj in range(1, 7):
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
         "--model",  'unique_variance_social', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_uniquevar_whole',
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_clip_unique_whole',
         #'--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/isc_mask.nii",
         "--trials", "1"
     ])
