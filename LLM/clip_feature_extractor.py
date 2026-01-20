@@ -4,14 +4,17 @@ os.environ['HF_HOME'] = '/home/new_storage/sherlock/hf_cache'
 os.environ['TRANSFORMERS_CACHE'] = '/home/new_storage/sherlock/hf_cache'
 os.environ['HUGGINGFACE_HUB_CACHE'] = '/home/new_storage/sherlock/hf_cache'
 
+
 import torch
+from scipy.special import softmax
 import clip
 from PIL import Image
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import argparse
-
+from transformers import AutoImageProcessor, AutoModel
+from transformers.image_utils import load_image
 def extract_frame_number(filepath):
     """Extract frame number from filepath."""
     try:
@@ -22,13 +25,14 @@ def extract_frame_number(filepath):
     except (ValueError, IndexError):
         return -1
 
-def analyze_frames(root_dir, model, processor, tr_ref, 
+def analyze_frames(root_dir, model, model_name, processor, tr_ref,
                   samples_per_seq=8,
                   seq_prefix='TR',
-                  seq_range=None,  
+                  seq_range=None,
                   file_extension='.jpg',
                   output_path='results.csv',
                   save_interval=50,
+                  device='cuda',
                   ):
     
     samples_per_seq = samples_per_seq * tr_ref
@@ -45,6 +49,7 @@ def analyze_frames(root_dir, model, processor, tr_ref,
                    if start <= int(d[len(seq_prefix):]) <= end]
     
     results = []
+    probe_similarities_list = []
     
     i = 0
     while i <= len(seq_dirs) - tr_ref:
@@ -84,28 +89,50 @@ def analyze_frames(root_dir, model, processor, tr_ref,
             batch_paths = sampled_frames[batch_start:batch_start + BATCHSIZE]
             images = [Image.open(path).convert("RGB") for path in batch_paths]
             
-            # Process images with CLIP
-            image_tensors = torch.stack([preprocess(image) for image in images]).to(device)
 
-            with torch.no_grad():
-                # Get image embeddings from CLIP
-                image_features = model.encode_image(image_tensors)
+            if model_name == "clip":
+                with torch.no_grad():
+                    # Get image embeddings from CLIP
+                    image_tensors = torch.stack([processor(image) for image in images]).to(device)
+                    image_features = model.encode_image(image_tensors)
 
                 # Normalize features (CLIP typically uses normalized embeddings)
                 image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-                
-                print(f"[DEBUG] CLIP batch shape: {image_features.shape}")
-                print(f"[DEBUG] CLIP batch std: {image_features.std().item():.4f}")
+            else:
+                inputs = processor(images=images, return_tensors="pt").to(model.device)
+                with torch.inference_mode():
+                    outputs = model(**inputs)
+                image_features = outputs.pooler_output
+
+            print(f"[DEBUG] CLIP batch shape: {image_features.shape}")
+            print(f"[DEBUG] CLIP batch std: {image_features.std().item():.4f}")
                 
                 # Store embeddings
-                for embedding in image_features:
-                    clip_embeddings.append(embedding.cpu().numpy())
+            for embedding in image_features:
+                clip_embeddings.append(embedding.cpu().numpy())
         
         if clip_embeddings:
+
+            clip_probes = [
+                "a close-up photograph of a human face",
+                "a photo of two people facing each other having a conversation",
+                "a photo of an empty room with no people",
+                "a photo of a person speaking",
+                "a photo of people interacting socially",
+                "a photo of an outdoor scene with trees and sky",
+                "a photo of a city street with buildings",
+            ]
+            clip_text_emb = model.encode_text(clip.tokenize(clip_probes).to(device))
+            clip_text_emb = clip_text_emb / clip_text_emb.norm(dim=-1, keepdim=True)
+            clip_text_emb = clip_text_emb.detach().cpu().numpy()
             # Average all embeddings for this TR group
+            ## save text_embeddings
+            np.save(f"{output_path}clip_probes.npy", clip_text_emb)
             avg_embedding = np.mean(np.stack(clip_embeddings), axis=0)
             print(f"[DEBUG] Saving CLIP embedding for group {group_label}, mean: {avg_embedding.mean():.4f}, std: {avg_embedding.std():.4f}")
-            
+            probe_similarities = clip_embeddings @ clip_text_emb.T ## (8,972) x (972,n_probes) -> (8,n_probes)
+            probe_similarities = softmax(probe_similarities/0.01 ,axis=-1).flatten()
+            print(f"[DEBUG] Probe similarities: {probe_similarities}")
             # Create output directory if it doesn't exist
             output_dir = "/home/new_storage/sherlock/STS_sherlock/projects data/clip_embeddings"
             os.makedirs(output_dir, exist_ok=True)
@@ -115,11 +142,14 @@ def analyze_frames(root_dir, model, processor, tr_ref,
             
             # Store result for tracking
             results.append([group_label, samples_processed, avg_embedding.shape[0]])
-            
+            probe_similarities_list.append(probe_similarities)
             # Save intermediate results
             if len(results) % save_interval == 0:
                 results_df = pd.DataFrame(results, columns=['TR', 'samples_processed', 'embedding_dim'])
+                probe_similarities_df = pd.DataFrame(probe_similarities_list, 
+                                                     columns= clip_probes)
                 #results_df.to_csv(output_path, index=False)
+                probe_similarities_df.to_csv(output_path, index=False)
                 print(f"\nIntermediate results saved to {output_path}")
         else:
             print(f"Warning: No embeddings generated for group {group_label}")
@@ -128,7 +158,10 @@ def analyze_frames(root_dir, model, processor, tr_ref,
 
     # Save final results
     results_df = pd.DataFrame(results, columns=['TR', 'samples_processed', 'embedding_dim'])
+    probe_similarities_df = pd.DataFrame(probe_similarities_list, 
+                                                     columns= clip_probes)
     #results_df.to_csv(output_path, index=False)
+    probe_similarities_df.to_csv(output_path, index=False)
     print(f"\nFinal results saved to {output_path}")
     
     return results_df
@@ -139,10 +172,10 @@ if __name__ == "__main__":
     parser.add_argument('--TR_root', type=str, default="/home/new_storage/sherlock/data/frames", 
                        help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, 
-                       default="/home/new_storage/sherlock/STS_sherlock/projects data/annotations/clip_embeddingscsv",
+                       default="/home/new_storage/sherlock/STS_sherlock/projects data/annotations/",
                        help='Path to save results CSV')
     parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
-    parser.add_argument('--end_seq', type=int, default=919, help='Ending sequence number')
+    parser.add_argument('--end_seq', type=int, default=1976, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int, default=1, help='How big is the reference TR')
     parser.add_argument('--save_interval', type=int, default=50, help='Save intermediate results every N sequences')
@@ -155,19 +188,25 @@ if __name__ == "__main__":
     
     # Load CLIP model and processor
     print(f"Loading CLIP model: {args.model_name}")
-    model, preprocess = clip.load('ViT-L/14@336px', device=device)
+    model, processor = clip.load('ViT-L/14@336px', device=device)
     model.eval()
-    
+
+    ## Load DINO
+    #processor = AutoImageProcessor.from_pretrained('facebook/dinov2-giant')
+    #model = AutoModel.from_pretrained('facebook/dinov2-giant',device_map='auto')
+
     # Run analysis
     results_df = analyze_frames(
         root_dir=args.TR_root,
         model=model,
-        processor=preprocess,
-        tr_ref=args.tr_ref, 
+        model_name="clip",
+        processor=processor,
+        tr_ref=args.tr_ref,
         seq_range=(args.start_seq, args.end_seq),
         output_path=args.output_path,
         samples_per_seq=args.samples_per_seq,
         save_interval=args.save_interval,
+        device=device,
     )
     
     print(f"Processing complete! Generated {len(results_df)} CLIP embeddings.")

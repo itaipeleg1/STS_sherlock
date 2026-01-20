@@ -6,16 +6,16 @@ from utils import apply_mask
 from statsmodels.stats.multitest import multipletests
 
 
-def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_name,model2_name,mask=None, output_folder="/home/new_storage/sherlock/STS_sherlock/projects data/results"):
+def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_name,model2_name,mask, output_folder="/home/new_storage/sherlock/STS_sherlock/projects data/results/LEYLA_CLIP"):
     """
     Simple function to compute unique variance maps for CLIP vs LLaVA+CLIP.
     
     Parameters:
     -----------
     model1_base_folder : str
-        Base folder containing subject folders with clip_r_subX.nii files
+        Base folder containing subject folders with dino_r_subX.nii files
     model2_base_folder : str  
-        Base folder containing subject folders with clip_llava_r_subX.nii files
+        Base folder containing subject folders with dino_clap_r_subX.nii files
     output_folder : str
         Where to save results
     """
@@ -123,19 +123,19 @@ def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_n
         
         # Save masked versions
         group_mean_img = nib.Nifti1Image(group_mean_3d, affine)
-        group_mean_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_mean_sts_masked.nii.gz")
+        group_mean_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_mean_whole_masked.nii.gz")
         
         group_sig_img = nib.Nifti1Image(group_sig_3d, affine)
-        group_sig_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_significant_sts_masked.nii.gz")
+        group_sig_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_significant_whole_masked.nii.gz")
 
         print(f"Voxels in mask: {len(group_sig_masked):,}")
     
 
     group_mean_img = nib.Nifti1Image(group_mean, affine)
-    group_mean_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_mean_sts.nii.gz")
+    group_mean_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_mean.nii.gz")
 
     group_sig_img = nib.Nifti1Image(group_sig, affine)
-    group_sig_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_significant_sts.nii.gz")
+    group_sig_img.to_filename(output_path / f"{model2_name}-{model1_name}_unique_group_significant.nii.gz")
 
     sig_mask_img = nib.Nifti1Image(sig_mask.astype(float), affine)
     sig_mask_img.to_filename(output_path / "significance_mask.nii.gz")
@@ -158,7 +158,7 @@ def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_n
 
 
 if __name__ == "__main__":
-    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_whole/cls_social/trial_1"
-    model2_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_uniquevar_whole/unique_variance_social/trial_1"
+    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/clip_full_whole/clip_full/trial_1"
+    model2_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/social_clip_whole/social_clip/trial_1"
 
-    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="cls_social", model2_name="unique_variance_social", mask=None)
+    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="clip_full", model2_name="social_clip", mask=None)

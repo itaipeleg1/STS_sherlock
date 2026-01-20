@@ -36,6 +36,32 @@ def extract_frame_number(filepath):
     except (ValueError, IndexError):
         return -1
 
+def compute_attention_rollout(attentions, start_layer=0, end_layer=None):
+    """
+    Compute attention rollout from start_layer to end_layer.
+
+    Uses a simpler, more stable approach: just use the last layer's attention
+    instead of rolling through all layers (which can be numerically unstable).
+
+    Args:
+        attentions: List of attention tensors from the model
+                   Each tensor shape: (batch, num_heads, seq_len, seq_len)
+        start_layer: Which layer to start from (default 0)
+        end_layer: Which layer to end at (default None = all layers)
+
+    Returns:
+        Attention matrix: (batch, seq_len, seq_len)
+    """
+    if end_layer is None:
+        end_layer = len(attentions)
+
+    # Simply use the attention from the target layer (more stable!)
+    # Average over attention heads
+    target_attention = attentions[end_layer - 1]  # Last layer in range
+    attention_heads_fused = target_attention.mean(dim=1)  # (batch, seq_len, seq_len)
+
+    return attention_heads_fused
+
 def analyze_frames(root_dir,model,tokenizer,
                    tr_ref, 
                     layer,
@@ -93,87 +119,134 @@ def analyze_frames(root_dir,model,tokenizer,
         lm_head = model.model.language_model.lm_head
         embedding_layer = model.model.language_model.model.embed_tokens
         samples_processed = len(sampled_frames)
-        prompt = "USER: <image>\nIs there social interaction in this image?.\nASSISTANT:"
-        keyword = "social"
+        prompt = "USER: <image>\nIs there an object in this image? Answer with Yes or No.\nASSISTANT:"
 
         # Process images one at a time (no batching)
         for frame_path in sampled_frames:
             image = Image.open(frame_path).convert("RGB")
 
-            # Forward pass to get hidden states
-            outputs = model.forward(image, prompt, output_hidden_states=True)
-            hidden_states = outputs.hidden_states
+            # Generate answer with attention tracking
+            # Need to call underlying model directly to get attentions
+            print("Generating answer...")
 
-            ## Extract hidden states at layer 25
-            layer_hidden = hidden_states[layer]  # shape (1, seq_len, hidden_dim)
+            # Prepare inputs
+            inputs = model.processor(text=prompt, images=image, return_tensors="pt")
+            inputs.to(model.model.device)
+
+            # Call generate on the underlying model directly
+            with torch.no_grad():
+                generation_outputs = model.model.generate(
+                    **inputs,
+                    max_new_tokens=1,
+                    output_hidden_states=True,
+                    output_attentions=True,
+                    return_dict_in_generate=True,
+                    do_sample=False
+                )
+
+            # Decode the response
+            response_str = model.processor.batch_decode(
+                generation_outputs.sequences,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False
+            )[0]
+
+            print(f"Model response: {response_str}")
+
+            # Extract attentions from generation
+            # generation_outputs.attentions is a tuple of tuples:
+            # - Outer tuple: generation steps (one per generated token)
+            # - Inner tuple: layers (32 layers for LLaVA)
+            gen_attentions = generation_outputs.attentions
+
+            # We want attention from the FIRST generated token (Yes/No)
+            # That's generation step 0
+            if len(gen_attentions) == 0:
+                print("Warning: No attentions in generation, skipping frame")
+                continue
+
+            first_token_attentions = gen_attentions[0]  # Tuple of 32 layer attentions
+
+            # Also get hidden states from the last generation step at our target layer
+            # hidden_states is tuple of tuples: (generation_step, layer)
+            gen_hidden_states = generation_outputs.hidden_states
+
+            # Get hidden states from first generation step, at our target layer
+            if len(gen_hidden_states) == 0:
+                print("Warning: No hidden states in generation, skipping frame")
+                continue
+
+            first_token_hidden_states = gen_hidden_states[0]  # First generation step
+            layer_hidden = first_token_hidden_states[layer]  # Our target layer (e.g., 25)
+
             print(f"Layer {layer} hidden states shape: {layer_hidden.shape}")
 
-            ## Encode the keyword
-            print(f"\n=== Analyzing similarity to keyword: '{keyword}' ===")
-            keyword_tokens = tokenizer.encode(keyword, add_special_tokens=False)
+            ## Compute attention rollout up to layer 25 for the first generated token
+            print(f"\n=== Computing attention rollout up to layer {layer} for generated token ===")
+            rollout = compute_attention_rollout(first_token_attentions, start_layer=0, end_layer=layer)
+            # rollout shape: (1, seq_len, seq_len)
 
-            ## Get key word embedding
-            keyword_tensor = torch.tensor(keyword_tokens).to(model.model.device)
-            keyword_embeddings = embedding_layer(keyword_tensor)
-            keyword_embeddings = F.normalize(keyword_embeddings, dim=-1)
+            # Get attention from the GENERATED TOKEN position to IMAGE tokens
+            # Image tokens: positions 0-575
+            # Generated token position: last position in the sequence
+            num_image_tokens = 576
+            seq_len = rollout.shape[-1]
+            generated_token_position = seq_len - 1  # Last position (the Yes/No token)
 
-            ## For each IMAGE token position, compute what it predicts and its similarity to keyword
-            num_image_tokens = 576  # Assuming 576 image tokens for 336x336
-            all_similarities = []
-            all_predicted_tokens = []
+            print(f"Looking at attention from generated token position {generated_token_position} to image tokens")
 
-            for pos in range(num_image_tokens):
-                token_hidden = layer_hidden[0, pos, :].unsqueeze(0)  # shape (1, hidden_dim)
+            # Get attention from generated token to all image tokens
+            # This shows: "Which image patches did the model attend to when generating Yes/No?"
+            image_attention_scores = rollout[0, generated_token_position, :num_image_tokens]  # (576,)
 
-                # Compute logits for this token position
-                logits = norm(token_hidden)
-                logits = lm_head(logits)  # shape (1, vocab_size)
+            # Filter out register tokens (first 5 positions seem to be artifacts)
+            # These consistently show high attention but predict nonsense
+            num_register_tokens = 1
+            print(f"Filtering out first {num_register_tokens} positions (likely register tokens)")
 
-                # Get predicted token
-                predicted_token_id = logits.argmax(dim=-1).item()
-                predicted_token = tokenizer.decode([predicted_token_id])
+            # Zero out attention to register positions
+            image_attention_scores[:num_register_tokens] = 1
 
-                # Get embedding of predicted token
-                predicted_token_embedding = embedding_layer(torch.tensor([predicted_token_id]).to(model.model.device))
+            print(f"Image attention scores shape: {image_attention_scores.shape}")
+            print(f"Attention score range (after filtering): [{image_attention_scores.min().item():.4f}, {image_attention_scores.max().item():.4f}]")
+            print(f"Sum of attention (after filtering): {image_attention_scores.sum().item():.4f}")
 
-                # Normalize predicted token embedding
-                predicted_token_embedding_norm = F.normalize(predicted_token_embedding, dim=-1)
+            # Get top 30 image token positions based on attention scores (excluding position 0)
+            # Create mask to exclude register tokens
+            valid_positions = torch.arange(num_register_tokens, num_image_tokens, device=image_attention_scores.device)
+            valid_attention_scores = image_attention_scores[num_register_tokens:]
 
-                # Compute cosine similarity between predicted token and keyword
-                similarity = torch.matmul(predicted_token_embedding_norm, keyword_embeddings.T)
+            # Get top 30 positions by attention score
+            top_30_values, top_30_relative_indices = torch.topk(valid_attention_scores, k=30, largest=True)
+            top_30_indices = valid_positions[top_30_relative_indices]
 
-                # Average across keyword tokens if multiple
-                if similarity.dim() > 1:
-                    similarity = similarity.mean(dim=-1)
-
-                all_similarities.append(similarity.item())
-                all_predicted_tokens.append(predicted_token)
-
-            # Convert to tensor
-            all_similarities = torch.tensor(all_similarities)
-
-            # Get top 10 IMAGE token positions by similarity to keyword
-            top_10_values, top_10_indices = torch.topk(all_similarities, k=min(10, num_image_tokens))
-
-            # Collect embeddings of top tokens
+            # Collect embeddings and apply logit lens to top tokens
             top_embeddings = []
             top_words = []
-            for pos_idx in top_10_indices:
-                pos = pos_idx.item()
-                token_hidden = layer_hidden[0, pos, :]  # shape (hidden_dim,)
-                top_embeddings.append(token_hidden.cpu().numpy())
-                top_words.append(all_predicted_tokens[pos])
 
-            # Average the top 10 token embeddings
+            print(f"\n=== Top 30 image tokens by attention (with logit lens) ===")
+            for idx, (pos_idx, attn_score) in enumerate(zip(top_30_indices, top_30_values)):
+                pos = pos_idx.item()
+
+                # Get hidden state for this position
+                token_hidden = layer_hidden[0, pos, :].unsqueeze(0)  # shape (1, hidden_dim)
+
+                # Apply logit lens to get predicted word
+                logits = lm_head(norm(token_hidden))  # shape (1, vocab_size)
+                predicted_token_id = logits.argmax(dim=-1).item()
+                predicted_word = tokenizer.decode([predicted_token_id])
+
+                # Store embedding and word
+                top_embeddings.append(layer_hidden[0, pos, :].cpu().numpy())
+                top_words.append(predicted_word)
+
+                print(f"{idx+1}. Position {pos} predicts '{predicted_word}' (attention: {attn_score.item():.4f})")
+
+            # Average the top 30 token embeddings
             if top_embeddings:
-                top_embeddings_stack = np.stack(top_embeddings)  # shape (10, hidden_dim)
+                top_embeddings_stack = np.stack(top_embeddings)  # shape (30, hidden_dim)
                 mean_embedding = np.mean(top_embeddings_stack, axis=0)  # shape (hidden_dim,)
                 language_latent.append(mean_embedding)
-
-                ## print the top 10 words
-                print(f"\n=== Top 10 predicted words most similar to '{keyword}' ===")
-                for idx, (word, score) in enumerate(zip(top_words, top_10_values)):
-                    print(f"{idx+1}. '{word}' (similarity: {score.item():.4f})")
 
         if language_latent:
             # Stack all frame embeddings into a matrix (num_frames, hidden_dim)
@@ -189,7 +262,7 @@ def analyze_frames(root_dir,model,tokenizer,
            
 
             # Save the averaged vector
-            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_social_layer25/{group_label}_latent.npy", avg)
+            np.save(f"/home/new_storage/sherlock/STS_sherlock/projects data/CLS_object_layer16_top30/{group_label}_latent.npy", avg)
         
         i += tr_ref #  no overlap between groups
 
@@ -201,7 +274,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze frames from video sequences using LLaVA model')
     parser.add_argument('--TR_root', type=str,  help='Root directory containing TR sequences')
     parser.add_argument('--output_path', type=str, help='Path to save results CSV')
-    parser.add_argument('--start_seq', type=int, default=222, help='Starting sequence number')
+    parser.add_argument('--start_seq', type=int, default=0, help='Starting sequence number')
     parser.add_argument('--end_seq', type=int, default=919, help='Ending sequence number')
     parser.add_argument('--samples_per_seq', type=int, default=8, help='Number of frames to sample per sequence')
     parser.add_argument('--tr_ref', type=int,default=1, help='How big is the reference TR')
@@ -220,7 +293,7 @@ if __name__ == "__main__":
             root_dir="/home/new_storage/sherlock/data/frames",
             model=model,
             tokenizer=tokenizer,
-            tr_ref=1,layer=25, 
+            tr_ref=1,layer=16, 
             seq_range=(args.start_seq, args.end_seq),
             output_path=output,
             samples_per_seq=args.samples_per_seq,

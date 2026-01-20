@@ -2,17 +2,17 @@ import cv2
 import argparse
 import os
 import numpy as np
-
+print("=== UPDATED VERSION RUNNING ===")
 def get_annotations(ann_dir, type):
     # Use np.load for .npy files and os.path.join for paths
     annotation_file = os.path.join(ann_dir, f"{type}.npy")
     try:
         data = np.load(annotation_file)
         # If you need to slice or process, do it here (otherwise just return data)
-       # data = data[25:]
-        s1 = data[25:946]
-        s2 = data[946+25:]
-        data = np.concatenate([s1, s2])
+       # data = data[26:]
+       # s1 = data[26:946]
+       # s2 = data[946+26:]
+        # data = np.concatenate([s1, s2])
     except Exception as e:
         print('Error: missing annotation file for', annotation_file, e)
         data = None
@@ -25,7 +25,7 @@ def add_relevant_annotation(all_annotations, count_annotation_frames):
         if all_annotations[key][count_annotation_frames] == 1:
             text += f'{key}, '
         else:
-            text += f'no {key}, '
+            text += f'NO {key} '
     return text
 
 
@@ -44,7 +44,7 @@ def add_text_to_movie(movie_path, new_path, all_annotations):
     frames_per_tr = int(target_fps * tr)
     frame_count = 0
     output_frame_count = 0  # Track output frames for TR calculation
-    len_annotations = all_annotations["face"].shape[0]
+    len_annotations = 1924
 
     # Get total frame count for progress reporting
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -61,7 +61,7 @@ def add_text_to_movie(movie_path, new_path, all_annotations):
         text = add_relevant_annotation(all_annotations, current_tr)
         timing_text = f"TR: {current_tr+1}/{len_annotations}, Frame: {frame_count}, Output: {output_frame_count}"
 
-        cv2.putText(frame, text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX ,1, (255, 255, 255), 2)
         cv2.putText(frame, timing_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         out_cap.write(frame)
@@ -98,12 +98,9 @@ if __name__ == '__main__':
     movie_path = args.movie_path
     new_path = args.new_path
 
-    faces_annotations = get_annotations(annotation_dir, "face")
-    socia_noosocial_annotations = get_annotations(annotation_dir, "social_nonsocial")
-    indoor_outdoor_annotations = get_annotations(annotation_dir, "indoor_outdoor")
+    pc2_annotations = get_annotations(annotation_dir, "clip_ppa_sts_pc2_binary")
 
-    all_annotations = {"face": faces_annotations,
-                       "social_nonsocial": socia_noosocial_annotations,
-                       "indoor_outdoor": indoor_outdoor_annotations}
+
+    all_annotations = {"pc2": pc2_annotations}
 
     add_text_to_movie(movie_path, new_path, all_annotations)

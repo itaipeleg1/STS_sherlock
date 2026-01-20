@@ -20,15 +20,27 @@ import numpy as np
 
 
 def concat_features(features_list, single_features_dir):
-    ## Ensure same length
 
+
+    max_length = 1924 # Maximum length to truncate/pad features
     processed_annotations = [np.load(os.path.join(single_features_dir, f'{item}.npy'),allow_pickle=True) for item in features_list]
+    for i in range(len(processed_annotations)):
+        print(f"Truncating feature {features_list[i]} from length {processed_annotations[i].shape[0]} to {max_length}")
+        if processed_annotations[i].shape[0] >= max_length:   
+            processed_annotations[i] = processed_annotations[i][:max_length]
     return np.concatenate(processed_annotations, axis=1)
 
 def main(data_path, annotations_path, mask_path , model, results_dir, original_data_shape, num_subjects, alphas, trials):
     feature_names = models_config_dict[model]
+    if len(feature_names) >1:
+        features = concat_features(feature_names, annotations_path)
+    else:
+        features = np.load(os.path.join(annotations_path, f'{feature_names[0]}.npy'), allow_pickle=True)
+        ## truncate to max length
+        features = features[:1924]
 
-    features = concat_features(feature_names, annotations_path)
+
+    
 
 
 
@@ -67,15 +79,18 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
     
     X = normalize(features, axis=0).astype(np.float32)
     ## This is used to mask for face if needed later
-    face_indices = np.load("/home/new_storage/sherlock/STS_sherlock/projects data/annotations/face_mask.npy")
-    face_mask = np.zeros(X.shape[0], dtype=bool)
-    face_mask[face_indices] = True
+    #face_mask[face_indices] = True
+
     num_features = X.shape[1]
+    print(f'Initial X shape: {X.shape}')
+
+
+    print(f'Final X shape after masking: {X.shape}')
 
     r_nifti_group = np.zeros([num_subjects, *original_data_shape])
     r_per_feature_nifti_group = np.zeros([num_subjects, num_features, *original_data_shape])
     all_subjects_weights = []
-    for subj in range(1, 7):
+    for subj in range(1, num_subjects + 1):
         print(f'Processing subject: {subj}')
         save_dir = os.path.join(results_dir, model, f"trial_{trials}", f"subject{subj}")
         os.makedirs(save_dir, exist_ok=True)
@@ -85,9 +100,14 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
 
         data_clean, masked_indices, original_data_shape, img_affine = clean_image(fmri_path, subj, mask, results_dir)
         data_clean = data_clean.reshape(data_clean.shape[0], -1)
+        ## Remove first 26 TR and
         data_clean = data_clean[26:]
+        t1 = data_clean[:946]
+        t2 = data_clean[946+26:]
+        data_clean = np.vstack((t1, t2))
         data_clean = data_clean[:len(X)]  
-
+         # Apply the same mask as features
+        
         print(f'X shape: {X.shape}, data_clean shape: {data_clean.shape}')
 
 
@@ -98,20 +118,41 @@ def main(data_path, annotations_path, mask_path , model, results_dir, original_d
         ridge_results = RidgeCV(alphas=alphas)
         ridge_results.fit(X_train, y_train)
         ridge_coef = ridge_results.coef_
-        
-        ## Individual weights matrix
-        subject_weights = ridge_coef.T # shape (features,voxels)
-        print(f'Subject {subj} weights shape: {subject_weights.shape}')
-        all_subjects_weights.append(subject_weights) # shape (num_features, num_voxels)
-        print("The shape of all_subjects_weights is:", np.array(all_subjects_weights).shape)
-       
-
-
-
-        # Predict and calculate correlations
+        # Predict and calculate correlations FIRST
         logging.info('Predicting and calculating correlation per voxel')
         y_pred = ridge_results.predict(X_test)
         r = np.array([np.corrcoef(y_test[:, i], y_pred[:, i])[0, 1] for i in range(y_test.shape[1])])
+
+        
+        ## Individual weights matrix
+        subject_weights = ridge_coef.T  # shape (features, voxels)
+        print(f'Subject {subj} weights shape: {subject_weights.shape}')
+
+        # Select top 1000 voxels by correlation
+        top_k = 1000
+        r_clean = np.nan_to_num(r, nan=-1)  # Handle NaNs
+        top_voxel_indices = np.argsort(r_clean)[-top_k:]  # Indices of top 1000
+
+        # Extract weights for top voxels only
+        subject_weights_top = subject_weights[:, top_voxel_indices]  # shape (features, 1000)
+        r_top = r[top_voxel_indices]  # shape (1000,)
+
+        print(f'Subject {subj} top {top_k} voxels - weights shape: {subject_weights_top.shape}, r range: [{r_top.min():.3f}, {r_top.max():.3f}]')
+
+        # Save top weights and indices
+        np.save(os.path.join(save_dir, f"{model}_weights_top{top_k}_sub{subj}.npy"), subject_weights_top)
+        np.save(os.path.join(save_dir, f"{model}_top{top_k}_indices_sub{subj}.npy"), top_voxel_indices)
+        np.save(os.path.join(save_dir, f"{model}_top{top_k}_r_sub{subj}.npy"), r_top)
+        top_voxel_brain_indices = (
+        masked_indices[0][top_voxel_indices],
+        masked_indices[1][top_voxel_indices],
+        masked_indices[2][top_voxel_indices]
+        )
+        np.save(os.path.join(save_dir, f"{model}_top{top_k}_brain_indices_sub{subj}.npy"), top_voxel_brain_indices)
+
+        all_subjects_weights.append(subject_weights_top)  # Now appending only top 1000
+       
+
         # Compute feature-wise weights
         logging.info('Calculating feature-wise weights')
         r_per_feature = np.zeros((num_features, y_test.shape[1]))
@@ -165,11 +206,11 @@ if __name__ == '__main__':
     parser.add_argument('--trials', type=int, default=1, help='Number of trials for moving average')
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'unique_variance_social', 
+        "--model",  'social', 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/llava_social_clip_unique_whole',
-        #'--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/isc_mask.nii",
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/leyla_whole',
+       # '--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ppa_mask.nii",
         "--trials", "1"
     ])
     
