@@ -293,11 +293,11 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args() if len(sys.argv) > 1 else parser.parse_args([
-        "--model",  'clip_full', 
+        "--model",  "social", 
         '--fmri_data_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/fmri_data",
         '--annotations_path', r'/home/new_storage/sherlock/STS_sherlock/projects data/annotations',
-        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/clip_full_whole',
-       # '--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ppa_mask.nii",
+        '--results_dir', r'/home/new_storage/sherlock/STS_sherlock/projects data/results/social_ffa',
+        '--isc_mask_path', r"/home/new_storage/sherlock/STS_sherlock/projects data/masks/ffa_mask.nii",
         "--trials", "1"
     ])
 

@@ -6,9 +6,9 @@ from utils import apply_mask
 from statsmodels.stats.multitest import multipletests
 
 
-def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_name,model2_name,mask, output_folder="/home/new_storage/sherlock/STS_sherlock/projects data/results/LEYLA_CLIP"):
+def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_name,model2_name,mask, output_folder="/home/new_storage/sherlock/STS_sherlock/projects data/results/LEYLA_CLAP"):
     """
-    Simple function to compute unique variance maps for CLIP vs LLaVA+CLIP.
+    Simple function to compute unique variance maps for CLAP vs LLaVA+CLAP.
     
     Parameters:
     -----------
@@ -158,7 +158,7 @@ def compute_unique_variance_maps(model1_base_folder, model2_base_folder,model1_n
 
 
 if __name__ == "__main__":
-    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/clip_full_whole/clip_full/trial_1"
-    model2_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/social_clip_whole/social_clip/trial_1"
+    model1_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/clap_full_whole/clap_full/trial_1"
+    model2_folder = "/home/new_storage/sherlock/STS_sherlock/projects data/results/social_clap_whole/social_clap/trial_1"
 
-    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="clip_full", model2_name="social_clip", mask=None)
+    results = compute_unique_variance_maps(model1_folder, model2_folder, model1_name="clap_full", model2_name="social_clap", mask=None)

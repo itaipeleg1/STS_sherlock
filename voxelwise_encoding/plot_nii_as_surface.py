@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import os
 from scipy import stats
 from statsmodels.stats.multitest import fdrcorrection
-
+import copy
 
 
 
@@ -42,9 +42,9 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str,
     nii = nib.load(results_file_path)
     data = nii.get_fdata()
     # replace nan with 0, as nans are voxels that are outside the ISC mask
-    
-    data = np.nan_to_num(data, nan=0.0)
-    #data[data < 0] = 0.0  # set negative correlations to zero
+    print("min and max before nan to num:", np.nanmin(data), np.nanmax(data))   
+    #data = np.nan_to_num(data, nan=0)
+
 
     model = model
     #data = apply_fdr_correction(data, n_test_samples, alpha=fdr_alpha)
@@ -61,12 +61,17 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str,
         output_path = f"/home/new_storage/sherlock/STS_sherlock/projects data/results/{model}.html"
 
     img = nib.Nifti1Image(data, affine=nii.affine)
-    title = f'{model} - {feature}, max r: {np.max(data):.4f}, avg top 100 r: {np.mean(np.sort(data[data > 0])[-100:]):.4f}' if np.sum(data > 0) >= 100 else f'{model} - {feature}, max r: {np.max(data):.4f}'
+    title = f'{model} - {feature}, max r: {np.max(data):.4f},min r {np.min(data):.4f}, avg top 100 r: {np.mean(np.sort(data[data > 0])[-100:]):.4f}' if np.sum(data > 0) >= 100 else f'{model} - {feature}, max r: {np.max(data):.4f}'
 
+
+    #plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=title,
+          #                  symmetric_cmap=False, cmap=cmap, colorbar=True, 
+           #                 vmax=vmax, vmin=vmin).save_as_html(output_path)
     plotting.view_img_on_surf(img, surf_mesh='fsaverage', title=title,
-                              symmetric_cmap=False, cmap='coolwarm',colorbar=True, vmax=vmax).save_as_html(output_path)
+                              symmetric_cmap=False, cmap='cold_hot',colorbar=True, vmax=vmax,bg_on_data=True).save_as_html(output_path)
 
     print(f"Saved Nilearn surface plot to: {output_path}")
+
 
 
 
@@ -74,8 +79,8 @@ def plot_voxelwise_encoding_results_on_surface(results_file_path: str,
 if __name__ == '__main__':
     # Example usage
 
-    path = "/home/new_storage/sherlock/STS_sherlock/projects data/results/map of CLIP and LEYLA.nii.gz"
+    path = '/home/new_storage/sherlock/STS_sherlock/projects data/preference_maps/social_vs_clap_unique_composite.html'
 
 
     # Method 1: Original nilearn method (fsaverage surface) - WORKS WITH MNI DATA
-    plot_voxelwise_encoding_results_on_surface(path, model=f'MAP of CLIP and LEYLA', feature='')
+    plot_voxelwise_encoding_results_on_surface(path, model=f'Social vs Clap composite ', feature='')
